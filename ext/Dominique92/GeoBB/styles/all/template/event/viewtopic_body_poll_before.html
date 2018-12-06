@@ -1,0 +1,125 @@
+<!-- IF GEO_MAP_TYPE -->
+
+<!-- Openlayers -->
+<!-- INCLUDECSS assets/MyOl/ol/ol.css -->
+<!-- INCLUDEJS assets/MyOl/ol/ol.js -->
+
+<!-- Recherche par nom -->
+<!-- INCLUDECSS assets/MyOl/geocoder/ol-geocoder.min.css -->
+<!-- INCLUDEJS assets/MyOl/geocoder/ol-geocoder.js -->
+ 
+<!-- Proj4 projections Swiss & UK -->
+<!-- //TODO CHEM pour all : INCLUDEJS assets/MyOl/proj4/proj4.js -->
+
+<!-- My Openlayers -->
+<!-- INCLUDECSS assets/MyOl/myol.css -->
+<!-- INCLUDEJS assets/MyOl/myol.js -->
+
+<!-- GeoBB -->
+<!-- INCLUDECSS map.css -->
+<!-- INCLUDEJS map.js -->
+
+<div class="map">
+	<div id="map"></div>
+	<!-- EVENT map_selector -->
+</div>
+
+<div class="geo-info">
+	<p id="marqueur-json" style="display:none">{GEOJSON}</p>
+	<!-- IF GEO_MAP_TYPE == 'point' -->
+		<p>Longitude <span id="marqueur-lon"></span>, Latitude <span id="marqueur-lat"></span></p>
+		<p id="marqueur-xy">(CH1903) X <span id="marqueur-x"></span>, Y <span id="marqueur-y"></span></p>
+	<!-- ENDIF -->
+
+	<!-- Application specific info -->
+	<!-- BEGIN info -->
+		<!-- IF info.DISPLAY_VALUE or info.DISPLAY or info.attaches -->
+			<{info.TAG1}{info.ATT_STYLE_TAG1}>
+				{info.INNER}
+				<!-- IF info.DISPLAY_VALUE -->:<!-- ENDIF -->
+				<!-- IF info.HREF -->
+					<a{info.ATT_HREF}>{info.DISPLAY_VALUE}</a>
+				<!-- ELSE -->
+					{info.DISPLAY_VALUE}
+				<!-- ENDIF -->
+				{info.POSTAMBULE}
+				<!-- BEGIN attaches -->
+					<p> &nbsp; &nbsp; <a href="viewtopic.php?t={attaches.TOPIC_ID}">{attaches.POST_SUBJECT}</a></p>
+				<!-- END attaches -->
+			</{info.TAG1}>
+		<!-- ENDIF -->
+	<!-- END info -->
+
+	<!-- //TODO BEST ASPIR CHEM météo idem WRI -->
+</div>
+
+<div class="action-bar">
+	<a href="./posting.php?mode=edit&f={FORUM_ID}&p={TOPIC_FIRST_POST_ID}" class="button" title="Modifier la fiche {TOPIC_TITLE}">Modifier</a>
+	<!-- //TODO ASPIR BEST ne pas afficher quand pas le droit -->
+	<!-- IF .quickmod -->
+	<div class="quickmod dropdown-container dropdown-container-left dropdown-up dropdown-{S_CONTENT_FLOW_END} dropdown-button-control" id="quickmod">
+		<span title="{L_QUICK_MOD}" class="button button-secondary dropdown-trigger dropdown-select">
+			<i class="icon fa-gavel fa-fw" aria-hidden="true"></i><span class="sr-only">{L_QUICK_MOD}</span>
+			<span class="caret"><i class="icon fa-sort-down fa-fw" aria-hidden="true"></i></span>
+		</span>
+		<div class="dropdown">
+				<div class="pointer"><div class="pointer-inner"></div></div>
+				<ul class="dropdown-contents">
+				<!-- BEGIN quickmod -->
+					<!-- DEFINE $QUICKMOD_AJAX = (quickmod.VALUE in ['lock', 'unlock', 'delete_topic', 'restore_topic', 'make_normal', 'make_sticky', 'make_announce', 'make_global']) -->
+					<li><a href="{quickmod.LINK}"<!-- IF $QUICKMOD_AJAX --> data-ajax="true" data-refresh="true"<!-- ENDIF -->>{quickmod.TITLE}</a></li>
+				<!-- END quickmod -->
+				</ul>
+			</div>
+		</div>
+	<!-- ENDIF -->
+</div>
+<hr clear="all" style="border-color:transparent">
+
+<script>
+	window.addEventListener('load', function() {
+		var geom = false,
+			map = new ol.Map({
+			target: 'map',
+			layers: [
+				geoLayer({TOPIC_ID}) //TODO BEST colorier de façon différente (gris) le polygone TOPIC_ID & le polygone survolé
+			],
+			controls: geobbControls().concat([
+				controlLayersSwitcher(
+					layers({GEO_KEYS})
+				)
+			])
+		});
+
+		<!-- IF GEO_MAP_TYPE == 'point' -->
+			var marqueur = marker('{EXT_DIR}images/cadre.png', 'marqueur'),
+				pos = marqueur.getPoint().getCoordinates();
+			map.addLayer(marqueur);
+
+			// Center the map
+			map.getView().setCenter(pos);
+			map.getView().setZoom(15);
+			geom = true;
+		<!-- ELSEIF GEO_MAP_TYPE == 'surface' && GEOJSON -->
+			var eljson = document.getElementById('marqueur-json'),
+				format = new ol.format.GeoJSON({
+					featureProjection: "EPSG:3857"
+				}),
+				source = new ol.source.Vector({
+					features: format.readFeatures(eljson.innerHTML)
+				});
+
+			// Center the map
+			map.getView().fit(source.getExtent());
+			geom = true;
+		<!-- ENDIF -->
+
+		map.addControl(
+			controlPermalink({
+				init: !geom,
+				visible: false
+			})
+		);
+	});
+</script>
+<!-- ENDIF -->

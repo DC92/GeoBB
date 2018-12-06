@@ -1,0 +1,56 @@
+<!-- Openlayers -->
+<!-- INCLUDECSS assets/MyOl/ol/ol.css -->
+<!-- INCLUDEJS assets/MyOl/ol/ol.js -->
+
+<!-- Recherche par nom -->
+<!-- INCLUDECSS assets/MyOl/geocoder/ol-geocoder.min.css -->
+<!-- INCLUDEJS assets/MyOl/geocoder/ol-geocoder.js -->
+
+<!-- My Openlayers -->
+<!-- INCLUDECSS assets/MyOl/myol.css -->
+<!-- INCLUDEJS assets/MyOl/myol.js -->
+
+<!-- GeoBB -->
+<!-- INCLUDECSS map.css -->
+<!-- INCLUDEJS map.js -->
+
+<!-- //TODO BEST Mettre ?date dans les liens des libs -->
+
+<div class="map">
+	<div id="map"></div>
+	<!-- EVENT map_selector -->
+</div>
+
+<div class="geo_presentation">{GEO_PRESENTATION}</div>
+<!-- INCLUDE news.html -->
+
+<script>
+	window.addEventListener('load', function() {
+		var map = new ol.Map({
+			target: 'map',
+			layers: [
+/*
+//TODO DELETE aspir
+//TODO complete chemineur
+				layerOverpass({
+					postLabel: postLabel
+				}),
+				layerPointsWri({
+					selectorName: 'wri-poi',
+					postLabel: postLabel
+				}),
+*/
+				geoLayer()
+			],
+			controls: geobbControls().concat([
+				controlLayersSwitcher(
+					layers({GEO_KEYS})
+				),
+				controlPermalink({
+					init: true,
+					visible: true
+				})
+			])
+		});
+	});
+</script>
