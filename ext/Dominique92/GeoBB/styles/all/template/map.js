@@ -38,8 +38,8 @@ function layers(keys) {
 }
 
 /*
-//TODO DELETE aspir
-//TODO complete chemineur
+//TODO-CHEM DELETE pour aspir
+//TODO-CHEM complete chemineur
 function postLabel(properties, feature, layer, pixel, ll4326) {
 	var type = typeof layer.options_.type == 'function' ?
 		layer.options_.type(properties, feature, layer, pixel, ll4326) :
@@ -49,7 +49,7 @@ function postLabel(properties, feature, layer, pixel, ll4326) {
 		layer.options_.name || '';
 
 	return ['<hr/><a title="Créer une fiche modifiable à partir du point" ' +
-			'href="posting.php?mode=post', //TODO BEST spécifique : passer en argument
+			'href="posting.php?mode=post', //TODO-BEST spécifique : passer en argument
 			'type=' + type,
 			'name=' + (name || type),
 			'lon=' + Math.round(ll4326[0] * 100000) / 100000,
@@ -59,7 +59,31 @@ function postLabel(properties, feature, layer, pixel, ll4326) {
 }
 */
 
-function layerStyle(properties, id, hover) {
+// The style of selected & edited topic
+var topicStyleOptions = {
+	image: new ol.style.Circle({
+		radius: 4,
+		fill: new ol.style.Fill({
+			color: 'black'
+		})
+	}),
+	fill: new ol.style.Fill({
+		color: 'rgba(0,0,0,0.3)'
+	}),
+	stroke: new ol.style.Stroke({
+		color: 'black'
+	})
+};
+var editStyleOptions = {
+	image: topicStyleOptions.image,
+	fill: topicStyleOptions.fill,
+	stroke: new ol.style.Stroke({
+		color: 'black',
+		width: 2
+	})
+};
+
+function layerStyleOptions(properties, id, hover) {
 	if (properties.icon)
 		return {
 			image: new ol.style.Icon({
@@ -69,38 +93,31 @@ function layerStyle(properties, id, hover) {
 
 	// The selected property
 	if (properties.id == id)
-		return {
-			fill: new ol.style.Fill({
-				color: 'rgba(0,0,0,0.3)'
-			}),
-			stroke: new ol.style.Stroke({
-				color: 'black'
-			})
-		};
+		return topicStyleOptions;
 
 	var cs = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(properties.color),
-		colorTr = 'rgba(' + parseInt(cs[1], 16) + ',' + parseInt(cs[2], 16) + ',' + parseInt(cs[3], 16) + ',0.5)';
+		colorTr = 'rgba(' + parseInt(cs[1], 16) + ',' + parseInt(cs[2], 16) + ',' + parseInt(cs[3], 16) + ',';
 	return {
 		fill: new ol.style.Fill({
-			color: hover ? 'rgba(0,0,0,0.3)' : colorTr
+			color: hover ? colorTr + '0.2)' : colorTr + '0.5)'
 		}),
 		stroke: new ol.style.Stroke({
-			color: hover ? 'black' : colorTr
+			color: hover ? colorTr + '1)' : colorTr + '0.5)'
 		})
 	};
 }
 
-function geoLayer(id, silent) {
-	return layerVectorURL({
-		url: 'ext/Dominique92/GeoBB/gis.php?limite=10000&',
-		style: function(properties) {
-			return layerStyle(properties, id);
+function geoLayer(idColor, idExclude, noHover) {
+	return new ol.layer.LayerVectorURL({
+		url: 'ext/Dominique92/GeoBB/gis.php?limit=10000&exclude=' + idExclude + '&',
+		styleOptions: function(properties) {
+			return layerStyleOptions(properties, idColor);
 		},
-		hover: function(properties) {
-			return layerStyle(properties, id, true);
+		hoverStyleOptions: function(properties) {
+			return layerStyleOptions(properties, idColor, !noHover);
 		},
 		label: function(properties) {
-			return silent ? null : properties.name;
+			return noHover ? null : '<a href="viewtopic.php?t=' + properties.id + '">' + properties.name + '<a>';
 		},
 		href: function(properties) {
 			return 'viewtopic.php?t=' + properties.id;

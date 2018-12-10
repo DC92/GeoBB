@@ -9,7 +9,7 @@
 <!-- INCLUDEJS assets/MyOl/geocoder/ol-geocoder.js -->
  
 <!-- Proj4 projections Swiss & UK -->
-<!-- //TODO CHEM pour all : INCLUDEJS assets/MyOl/proj4/proj4.js -->
+<!-- //TODO-CHEM pour all : INCLUDEJS assets/MyOl/proj4/proj4.js -->
 
 <!-- My Openlayers -->
 <!-- INCLUDECSS assets/MyOl/myol.css -->
@@ -44,18 +44,23 @@
 				<!-- ENDIF -->
 				{info.POSTAMBULE}
 				<!-- BEGIN attaches -->
-					<p> &nbsp; &nbsp; <a href="viewtopic.php?t={attaches.TOPIC_ID}">{attaches.POST_SUBJECT}</a></p>
+					<p> &nbsp; &nbsp; <b><a href="viewtopic.php?t={attaches.TOPIC_ID}" title="voir la fiche">{attaches.POST_SUBJECT}</a></b></p>
+					<!-- BEGIN detail -->
+						<!-- IF detail.DISPLAY_VALUE and detail.DISPLAY_VALUE != TOPIC_ID -->
+							&nbsp; &nbsp; &nbsp; &nbsp; {detail.INNER} : {detail.DISPLAY_VALUE} {info.POSTAMBULE}<br/>
+						<!-- ENDIF -->
+					<!-- END detail -->
 				<!-- END attaches -->
 			</{info.TAG1}>
 		<!-- ENDIF -->
 	<!-- END info -->
-
-	<!-- //TODO BEST ASPIR CHEM météo idem WRI -->
+	<!-- //TODO-CHEM météo idem WRI -->
 </div>
 
 <div class="action-bar">
-	<a href="./posting.php?mode=edit&f={FORUM_ID}&p={TOPIC_FIRST_POST_ID}" class="button" title="Modifier la fiche {TOPIC_TITLE}">Modifier</a>
-	<!-- //TODO ASPIR BEST ne pas afficher quand pas le droit -->
+	<!-- IF TOPIC_AUTH_EDIT -->
+		<a href="./posting.php?mode=edit&f={FORUM_ID}&p={TOPIC_FIRST_POST_ID}" class="button" title="Modifier la fiche {TOPIC_TITLE}">Modifier</a>
+	<!-- ENDIF -->
 	<!-- IF .quickmod -->
 	<div class="quickmod dropdown-container dropdown-container-left dropdown-up dropdown-{S_CONTENT_FLOW_END} dropdown-button-control" id="quickmod">
 		<span title="{L_QUICK_MOD}" class="button button-secondary dropdown-trigger dropdown-select">
@@ -79,10 +84,10 @@
 <script>
 	window.addEventListener('load', function() {
 		var geom = false,
-			map = new ol.Map({
+			map = new ol.MyMap({
 			target: 'map',
 			layers: [
-				geoLayer({TOPIC_ID}) //TODO BEST colorier de façon différente (gris) le polygone TOPIC_ID & le polygone survolé
+				geoLayer({TOPIC_ID})
 			],
 			controls: geobbControls().concat([
 				controlLayersSwitcher(

@@ -6,7 +6,6 @@
 	--------------------------------------------------------------
 */
 
-/*//TODO BEST ASPIR click sur titre de la page */
 .site_logo {
 	background-image: url("http://aspir.eu/wp-content/uploads/2016/09/jhu-e1464350442860-75x75.jpg");
 	background-repeat: no-repeat;
@@ -95,6 +94,9 @@ input[type="number"] {
 	content: "Attendre la fin du chargement des fichiers pour enregistrer le sujet.";
 }
 
+.geo-info {
+	margin-bottom: 20px;
+}
 .geo-info p {
 	margin: 0;
 }

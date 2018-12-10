@@ -9,7 +9,7 @@
 
 namespace Dominique92\GeoBB\event;
 
-define('SQL_PRE', ''); //TODO MySQL 5.7+ 'ST_'
+define('SQL_PRE', ''); //TODO-ARCHI MySQL 5.7+ 'ST_'
 
 if (!defined('IN_PHPBB'))
 {
@@ -34,8 +34,9 @@ class listener implements EventSubscriberInterface
 		$this->template = $template;
 		$this->user = $user;
 		$this->auth = $auth;
-//TODO BEST		$this->extension_manager = $extension_manager;
-//TODO BEST		$this->root_path = $root_path;
+//TODO-BEST		$this->extension_manager = $extension_manager;
+//TODO-BEST		$this->root_path = $root_path;
+//TODO-ASPIR ??? recherche par département / commune
 	}
 
 	// Liste des hooks et des fonctions associées
@@ -43,7 +44,6 @@ class listener implements EventSubscriberInterface
 	static public function getSubscribedEvents() {
 		return [
 			// All
-			'core.user_setup' => 'user_setup',
 			'core.page_footer' => 'page_footer',
 
 			// Index
@@ -64,8 +64,42 @@ class listener implements EventSubscriberInterface
 		];
 	}
 
-//TODO test protections
-//TODO test owner import ??? / 3279 notifications
+	/**
+		ALL
+	*/
+	function page_footer() {
+//		ob_start();var_dump($this->template);echo'template = '.ob_get_clean(); // VISUALISATION VARIABLES TEMPLATE
+
+		// Inclue les fichiers langages de cette extension
+		$ns = explode ('\\', __NAMESPACE__);
+		$this->user->add_lang_ext($ns[0].'/'.$ns[1], 'common');
+
+		// Assign post contents to some templates variables
+		$mode = $this-> request->variable('mode', '');
+		$msgs = [
+			'Conditions d\'utilisation' => 'L_TERMS_OF_USE',
+			'Politique de confidentialité' => 'L_PRIVACY_POLICY',
+			'Bienvenue' => 'GEO_PRESENTATION',
+			'Aide' => 'GEO_URL_AIDE',
+			$mode == 'terms' ? 'Conditions d\'utilisation' : 'Politique de confidentialité' => 'AGREEMENT_TEXT',
+		];
+		foreach ($msgs AS $k=>$v) {
+			$sql = 'SELECT post_text, bbcode_uid, bbcode_bitfield FROM '.POSTS_TABLE.' WHERE post_subject = "'.$k.'" ORDER BY post_id';
+			$result = $this->db->sql_query($sql);
+			$row = $this->db->sql_fetchrow($result);
+			$this->db->sql_freeresult($result);
+			if ($row) {
+				$this->template->assign_var (
+					$v,
+					generate_text_for_display($row['post_text'],
+					$row['bbcode_uid'],
+					$row['bbcode_bitfield'],
+					OPTION_FLAG_BBCODE, true)
+				);
+			}
+		}
+	}
+
 
 	/**
 		INDEX.PHP
@@ -90,7 +124,6 @@ class listener implements EventSubscriberInterface
 		$this->template->assign_var ('PLUS_NOUVELLES', $news * 2);
 
 		// Display news
-		//TODO ASPIR masquer les messages de forums non autorisés.
 		$sql = "
 			SELECT p.post_id, p.post_attachment, p.post_time, p.poster_id,
 				t.topic_id, topic_title,topic_first_post_id, t.topic_posts_approved,
@@ -108,24 +141,10 @@ class listener implements EventSubscriberInterface
 		while ($row = $this->db->sql_fetchrow($result))
 			if ($this->auth->acl_get('f_read', $row['forum_id'])) {
 				$row ['post_time'] = '<span title="'.$this->user->format_date ($row['post_time']).'">'.date ('j M', $row['post_time']).'</span>';
-//TODO CHEM				$row ['geo_massif'] = str_replace ('~', '', $row ['geo_massif']);
+//TODO				$row ['geo_massif'] = str_replace ('~', '', $row ['geo_massif']);
 				$this->template->assign_block_vars('news', array_change_key_case ($row, CASE_UPPER));
 			}
 		$this->db->sql_freeresult($result);
-
-		// Affiche un message de bienvenue dépendant du style pour ceux qui ne sont pas connectés
-		// Le texte de ces messages sont dans les posts dont le titre est !style
-		$sql = 'SELECT post_text, bbcode_uid, bbcode_bitfield FROM '.POSTS_TABLE.' WHERE post_subject = "Bienvenue" ORDER BY post_id';
-		$result = $this->db->sql_query($sql);
-		$row = $this->db->sql_fetchrow($result);
-		$this->db->sql_freeresult($result);
-		$this->template->assign_var (
-			'GEO_PRESENTATION',
-			generate_text_for_display($row['post_text'],
-			$row['bbcode_uid'],
-			$row['bbcode_bitfield'],
-			OPTION_FLAG_BBCODE, true)
-		);
 	}
 
 	/**
@@ -154,7 +173,12 @@ class listener implements EventSubscriberInterface
 	// Appelé lors de la deuxième passe sur les données des posts qui prépare dans $post_row les données à afficher sur le post du template
 	function viewtopic_modify_post_row($vars) {
 		$post_id = $vars['row']['post_id'];
-		$this->template->assign_var ('TOPIC_FIRST_POST_ID', $vars['topic_data']['topic_first_post_id']);
+		$this->template->assign_vars ([
+			'TOPIC_FIRST_POST_ID' => $vars['topic_data']['topic_first_post_id'],
+			'TOPIC_AUTH_EDIT' =>
+				$this->auth->acl_get('m_edit', $vars['row']['forum_id']) ||
+				$vars['topic_data']['topic_poster'] == $this->user->data['user_id'],
+		]);
 		$this->geobb_activate_map($vars['topic_data']['forum_desc']);
 
 		// Assign the geo values to the template
@@ -178,7 +202,7 @@ class listener implements EventSubscriberInterface
 
 			if ($post_data['post_id'] == $vars['topic_data']['topic_first_post_id']) {
 				$this->get_automatic_data($post_data);
-				$this->topic_fields($post_data, $vars['topic_data']['forum_desc'], $vars['topic_data']['forum_name']);
+				$this->topic_fields('info', $post_data, $vars['topic_data']['forum_desc'], $vars['topic_data']['forum_name']);
 
 				// Assign geo_ vars to template for these used out of topic_fields
 				foreach ($post_data AS $k=>$v)
@@ -238,7 +262,7 @@ class listener implements EventSubscriberInterface
 			$geophp = \geoPHP::load($post_data['geomwkt'],'wkt');
 			$this->get_bounds($geophp);
 			$gp = json_decode ($geophp->out('json')); // On transforme le GeoJson en objet PHP
-//TODO BEST			$this->optim ($gp, 0.0001); // La longueur min des segments de lignes & surfaces sera de 0.0001 ° = 10 000 km / 90° * 0.0001 = 11m
+//TODO-BEST			$this->optim ($gp, 0.0001); // La longueur min des segments de lignes & surfaces sera de 0.0001 ° = 10 000 km / 90° * 0.0001 = 11m
 			$post_data['geojson'] = json_encode ($gp);
 		}
 
@@ -257,10 +281,10 @@ class listener implements EventSubscriberInterface
 				$page_data[strtoupper ($k)] =
 					strstr($v, '~') == '~' ? null : $v; // Clears fields ending with ~ for automatic recalculation
 
-		$this->topic_fields($post_data, $post_data['forum_desc'], $post_data['forum_name']);
+		$this->topic_fields('info', $post_data, $post_data['forum_desc'], $post_data['forum_name']);
 		$this->geobb_activate_map($post_data['forum_desc'], $post_data['post_id'] == $post_data['topic_first_post_id']);
 
-		// HORRIBLE phpbb hack to accept geom values //TODO BEST : check if done by PhpBB (supposed 3.2)
+		// HORRIBLE phpbb hack to accept geom values //TODO-BEST : check if done by PhpBB (supposed 3.2)
 		$file_name = "phpbb/db/driver/driver.php";
 		$file_tag = "\n\t\tif (is_null(\$var))";
 		$file_patch = "\n\t\tif (strpos (\$var, 'GeomFromText') !== false) //GeoBB\n\t\t\treturn \$var;";
@@ -347,32 +371,6 @@ class listener implements EventSubscriberInterface
 	/**
 		COMMON FUNCTIONS
 	*/
-	function page_footer() {
-//		ob_start();var_dump($this->template);echo'template = '.ob_get_clean(); // VISUALISATION VARIABLES TEMPLATE
-
-		// Help toolbar link
-		$sql = 'SELECT topic_id FROM '.POSTS_TABLE.' WHERE post_subject = "Aide" ORDER BY post_id';
-		$result = $this->db->sql_query($sql);
-		$row = $this->db->sql_fetchrow($result);
-		$this->db->sql_freeresult($result);
-		$this->template->assign_var ('GEO_URL_AIDE', 'viewtopic.php?t='.$row['topic_id']);
-	}
-
-	function user_setup($vars) {
-		// Inclue les fichiers langages de cette extension
-		$ns = explode ('\\', __NAMESPACE__);
-		$this->user->add_lang_ext($ns[0].'/'.$ns[1], 'common');
-
-/*
-		// On recherche les templates aussi dans l'extension
-		$ext = $this->extension_manager->all_enabled();
-		$ext[] = ''; // En dernier lieu, le style de base !
-		foreach ($ext AS $k=>$v)
-			$ext[$k] .= 'styles';
-		$this->template->set_style($ext);
-*/
-	}
-
 	function geobb_activate_map($forum_desc, $first_post = true) {
 		global $geo_keys; // Private / defined in config.php
 
@@ -385,6 +383,7 @@ class listener implements EventSubscriberInterface
 			case 'all': // Régle sur tous les posts
 				$ns = explode ('\\', __NAMESPACE__);
 				$this->template->assign_vars([
+					'META_ROBOTS' => META_ROBOTS,
 					'EXT_DIR' => 'ext/'.$ns[0].'/'.$ns[1].'/', // Répertoire de l'extension
 					'GEO_MAP_TYPE' => $regle[2],
 					'GEO_KEYS' => json_encode($geo_keys),
@@ -471,8 +470,9 @@ class listener implements EventSubscriberInterface
 								$update['geo_reserve'] = $f->properties->nom;
 							break;
 						case 'carte':
-							$ms = explode(' ', $f->properties->nom);
-					$igns[] = "<a target=\"_BLANK\" href=\"https://ignrando.fr/boutique/catalogsearch/result/?q={$ms[1]}\">{$f->properties->nom}</a>";
+							$ms = explode(' ', str_replace ('-', ' ', $f->properties->nom));
+							$nom_carte = str_replace ('-', ' ', str_replace (' - ', ' : ', $f->properties->nom));
+							$igns[] = "<a target=\"_BLANK\" href=\"https://ignrando.fr/boutique/catalogsearch/result/?q={$ms[1]}\">$nom_carte</a>";
 							break;
 					}
 			}
@@ -481,7 +481,7 @@ class listener implements EventSubscriberInterface
 
 		// Calcul de la commune (France)
 		if (array_key_exists ('geo_commune', $row) && !$row['geo_commune']) {
-{/*//TODO DELETE ???			$ch = curl_init ();
+{/*//TODO-CHEM DELETE ???			$ch = curl_init ();
 			curl_setopt ($ch, CURLOPT_URL,
 				'http://wxs.ign.fr/d27mzh49fzoki1v3aorusg6y/geoportail/ols?'.
 				http_build_query ( array(
@@ -582,7 +582,7 @@ if(defined('TRACES_DOM'))/*DCMM*/echo"<pre style='background-color:white;color:b
 	}
 
 	// Form management
-	function topic_fields ($post_data, $forum_desc, $forum_name) {
+	function topic_fields ($block_name, $post_data, $forum_desc, $forum_name) {
 		// Get form fields from the relative post
 		preg_match ('/\[fiche=([^\]]+)\]/i', $forum_desc, $match); // Try in forum_desc [fiche=Alpages][/fiche]
 		$sql = "
@@ -600,10 +600,13 @@ if(defined('TRACES_DOM'))/*DCMM*/echo"<pre style='background-color:white;color:b
 		foreach ($def_forms AS $kdf=>$df) {
 			$dfs = explode ('|', preg_replace ('/[[:cntrl:]]|<[^>]+>/', '', $df.'|||'));
 			$vars = $attaches = [];
+
+			// Default tags
 			$vars['TAG1'] = $sql_id = 'p';
 			$sql_id = 'geo_'.$dfs[0];
-			$vars['SQL_TYPE'] = 'text';
 			$vars['INNER'] = $dfs[1];
+			$vars['TYPE'] = $dfs[2];
+			$vars['SQL_TYPE'] = 'text';
 			$vars['DISPLAY_VALUE'] =
 			$vars['POST_VALUE'] =
 				str_replace ('~', '', $post_data[$sql_id]);
@@ -622,16 +625,16 @@ if(defined('TRACES_DOM'))/*DCMM*/echo"<pre style='background-color:white;color:b
 				$ndf = implode (' geo_', array_slice ($def_forms, $kdf)); // Find the block beginning
 				$c = $n = 1;
 				$ndfl = strlen ($ndf);
-				$r = '';
 				while ($n && $c < $ndfl) // Find the block end
 					switch ($ndf[$c++]) {
 						case '{': $n++; break;
 						case '}': $n--;
 					}
 				// Check if any value there
-				preg_match_all ('/(geo_[a-z_0-9]+)/', substr ($ndf, 0, $c), $match);
-				foreach ($match[0] AS $m)
-					if ($post_data[$m])
+				preg_match_all ('/(geo_[a-z_0-9]+)\|[^\|]+\|([a-z]+)/', substr ($ndf, 0, $c), $match);
+				foreach ($match[1] AS $k=>$m)
+					if ($post_data[$m] &&
+						($match[2][$k] != 'confidentiel' || $this->user->data['is_registered']))
 						$vars['DISPLAY'] = true; // Decide to display the title
 			}
 
@@ -665,9 +668,8 @@ if(defined('TRACES_DOM'))/*DCMM*/echo"<pre style='background-color:white;color:b
 						preg_match_all ('/([0-9\.]+)/', $post_data['geomwkt'], $point);
 						$km = 3;
 						$bbox = ($point[0][0]-.0127*$km).' '.($point[0][1]-.009*$km).",".($point[0][0]+.0127*$km).' '.($point[0][1]+.009*$km);
-						//TODO BEST en MySQL 5.7+, utiliser ST_Distance, ST_Centroid & ST_Dimension
 						$sql = "
-							SELECT post_subject, topic_id, AsText(Centroid(geom)) AS centre
+							SELECT post_subject, topic_id, ".SQL_PRE."AsText(".SQL_PRE."Centroid(geom)) AS centre
 							FROM ".POSTS_TABLE."
 							WHERE ".SQL_PRE."Dimension(geom) > 0 AND
 								MBRIntersects(geom, ".SQL_PRE."GeomFromText('LineString($bbox)'))
@@ -692,17 +694,16 @@ if(defined('TRACES_DOM'))/*DCMM*/echo"<pre style='background-color:white;color:b
 				}
 
 				// sql_id|titre|attaches
+				//TODO-BEST-ASPIR faire effacer le bloc {} quand il n'y a pas d'attaches
 				elseif (!strcasecmp ($dfs[2], 'attaches')) {
 					$vars['TAG'] = 'input';
 					$vars['TYPE'] = 'hidden';
 					$vars['INNER'] = $dfs[1];
 					$vars['DISPLAY_VALUE'] = ' ';
-					//TODO ASPIR BUG Points d'eau et Cabanes s'affichent même quand pas ded'attachés
-					//TODO BEST ASPIR faire effacer le bloc {} quand il n'y a pas d'attaches
 
 					if (array_key_exists ($sql_id, $post_data)) {
 						$sql = "
-							SELECT topic_id, post_subject
+							SELECT *
 							FROM ".POSTS_TABLE."
 								JOIN ".FORUMS_TABLE." USING (forum_id)
 							WHERE forum_image LIKE '%{$dfs[3]}.png' AND
@@ -711,7 +712,8 @@ if(defined('TRACES_DOM'))/*DCMM*/echo"<pre style='background-color:white;color:b
 							";
 						$result = $this->db->sql_query($sql);
 						while ($row = $this->db->sql_fetchrow($result))
-							$attaches[] = $row; //TODO BEST ASPIR expanser les valeurs geo_ (il manque le titre des lignes du formulaire)
+							$attaches[] = $row;
+
 						$this->db->sql_freeresult($result);
 						if (!count ($attaches))
 							$vars['ATT_STYLE_TAG1'] = ' style="display:none"';
@@ -748,14 +750,17 @@ if(defined('TRACES_DOM'))/*DCMM*/echo"<pre style='background-color:white;color:b
 					$vars['PLACEHOLDER'] = str_replace('"', "''", $dfs[3]);
 				}
 
+				// sql_id|titre|confidentiel|invite
 				// sql_id|titre|court|invite
 				else {
 					$vars['TAG'] = 'input';
 					$vars['SIZE'] = '40';
 					$vars['CLASS'] = 'inputbox autowidth';
 					$vars['PLACEHOLDER'] = str_replace('"', "''", $dfs[3]);
+					if ($dfs[2] == 'confidentiel' && !$this->user->data['is_registered'])
+						$vars['DISPLAY_VALUE'] = null;
 				}
-			} //TODO BEST DELETE pourquoi as-ton besoin du test précédent ?
+			} //TODO-ARCHI DELETE pourquoi as-ton besoin du test précédent ?
 //else/*DCMM*/echo"<pre style='background-color:white;color:black;font-size:14px;'> = ".var_export($_COOKIE,true).'</pre>';
 
 			$vars['NAME'] = $sql_id.'-'.$vars['SQL_TYPE'];
@@ -765,21 +770,26 @@ if(defined('TRACES_DOM'))/*DCMM*/echo"<pre style='background-color:white;color:b
 				if ($v)
 					$vars['ATT_'.$k] = ' '.strtolower($k).'="'.str_replace('"','\\\"', $v).'"';
 
-			$this->template->assign_block_vars('info', $vars);
+			$this->template->assign_block_vars($block_name, $vars);
 
-			if (count($options)) {
+			if (count($options) &&
+				count (explode ('.', $block_name)) == 1) {
 				foreach ($options AS $v)
-					$this->template->assign_block_vars('info.options', [
+					$this->template->assign_block_vars($block_name.'.options', [
 						'OPTION' => gettype($v) == 'string' ? $v : $v['post_subject'],
 						'VALUE' => gettype($v) == 'string' ? $v : $v['topic_id'],
 					]);
-				foreach ($attaches AS $v)
-					$this->template->assign_block_vars('info.attaches', array_change_key_case ($v, CASE_UPPER));
+
+				foreach ($attaches AS $v) {
+					$this->template->assign_block_vars($block_name.'.attaches', array_change_key_case ($v, CASE_UPPER));
+					if (count (explode ('.', $block_name)) == 1)
+						$this->topic_fields ($block_name.'.attaches.detail', $v, null, $v['forum_name']);
+				}
 			}
 		}
 	}
 
-	/*//TODO BEST geophp simplify : https://github.com/phayes/geoPHP/issues/24
+	/*//TODO-BEST geophp simplify : https://github.com/phayes/geoPHP/issues/24
     $oGeometry = geoPHP::load($skt,'wkt');
     $reducedGeom = $oGeometry->simplify(1.5);
     $skt = $reducedGeom->out('wkt');Erradiquer geoPHP ? si SQL >= version 5.7 (inclue JSON) -> Phpbb 3.2

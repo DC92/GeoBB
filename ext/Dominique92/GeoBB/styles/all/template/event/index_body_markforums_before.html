@@ -14,7 +14,8 @@
 <!-- INCLUDECSS map.css -->
 <!-- INCLUDEJS map.js -->
 
-<!-- //TODO BEST Mettre ?date dans les liens des libs -->
+<!-- //TODO-ARCHI Mettre ?date dans les liens des libs -->
+<!-- //TODO-BEST map redimensionnable -->
 
 <div class="map">
 	<div id="map"></div>
@@ -26,12 +27,12 @@
 
 <script>
 	window.addEventListener('load', function() {
-		var map = new ol.Map({
+		var map = new ol.MyMap({
 			target: 'map',
 			layers: [
 /*
-//TODO DELETE aspir
-//TODO complete chemineur
+//TODO-CHEM DELETE pour aspir
+//TODO-CHEM complete chemineur
 				layerOverpass({
 					postLabel: postLabel
 				}),
