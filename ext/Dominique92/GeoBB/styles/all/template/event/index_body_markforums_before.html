@@ -1,37 +1,21 @@
-<!-- Openlayers -->
-<!-- INCLUDECSS assets/MyOl/ol/ol.css -->
-<!-- INCLUDEJS assets/MyOl/ol/ol.js -->
+<!-- INCLUDE map.html -->
 
-<!-- Recherche par nom -->
-<!-- INCLUDECSS assets/MyOl/geocoder/ol-geocoder.min.css -->
-<!-- INCLUDEJS assets/MyOl/geocoder/ol-geocoder.js -->
-
-<!-- My Openlayers -->
-<!-- INCLUDECSS assets/MyOl/myol.css -->
-<!-- INCLUDEJS assets/MyOl/myol.js -->
-
-<!-- GeoBB -->
-<!-- INCLUDECSS map.css -->
-<!-- INCLUDEJS map.js -->
-
-<!-- //TODO-ARCHI Mettre ?date dans les liens des libs -->
-<!-- //TODO-BEST map redimensionnable -->
-
-<div class="map">
+<div id="map-frame">
 	<div id="map"></div>
-	<!-- EVENT map_selector -->
+	<!-- INCLUDE overall_map_selector.html -->
 </div>
 
 <div class="geo_presentation">{GEO_PRESENTATION}</div>
-<!-- INCLUDE news.html -->
+<!-- //TODO BUG grande zone vide sur mobile qaund pas de bienvenue -->
+<!-- INCLUDE index_news.html -->
 
 <script>
 	window.addEventListener('load', function() {
-		var map = new ol.MyMap({
+		new ol.MyMap({
 			target: 'map',
 			layers: [
+				geoLayer() // GeoBB overlay
 /*
-//TODO-CHEM DELETE pour aspir
 //TODO-CHEM complete chemineur
 				layerOverpass({
 					postLabel: postLabel
@@ -41,17 +25,13 @@
 					postLabel: postLabel
 				}),
 */
-				geoLayer()
 			],
-			controls: geobbControls().concat([
-				controlLayersSwitcher(
-					layers({GEO_KEYS})
-				),
-				controlPermalink({
-					init: true,
-					visible: true
-				})
-			])
+			controls: controlsCollection({
+				geoKeys: {GEO_KEYS}
+			}),
+			controlDownloadGPX: {
+				fileName: 'topics' //TODO name option
+			}
 		});
 	});
 </script>

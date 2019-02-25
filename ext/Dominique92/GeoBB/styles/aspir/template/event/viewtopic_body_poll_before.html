@@ -7,7 +7,6 @@
 <p id="marqueur-json" style="display:none">{GEOJSON}</p>
 
 <!-- INCLUDE viewtopic_specific_fields.html -->
-<!-- IF 0 -->//TODO-CHEM météo idem WRI<!-- ENDIF -->
 <!-- INCLUDE viewtopic_edit_button.html -->
 
 <script>
@@ -16,16 +15,12 @@
 			map = new ol.MyMap({
 				target: 'map',
 				layers: [
-					geoLayer({TOPIC_ID})
+					aspirLayer({TOPIC_ID})
 				],
-				controls: controlsCollection({
+				controls: aspirControls({
 					geoKeys: {GEO_KEYS},
 					controlPermalink: {
 						init: eljson.innerHTML.search(/[0-9]/) == -1 // If a valid coordinate is specified
-					},
-					controlDownloadGPX: {
-						fileName: 'topic', //TODO name option
-//TODO						extraMetaData: "<desc>//TODO description...</desc>\n"
 					}
 				})
 			});
@@ -44,7 +39,7 @@
 					featureProjection: "EPSG:3857"
 				}),
 				source = new ol.source.Vector({
-					features: format.readFeatures(eljson.innerHTML)
+					features: format.readFeatures(eljson.innerHTML.replace(':]',':[]')) //TODO hack for O2switch sql bug / still here ?
 				});
 
 			// Center the map

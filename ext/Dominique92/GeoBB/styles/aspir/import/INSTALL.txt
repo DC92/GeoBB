@@ -1,48 +1,66 @@
-<?php
-// Importation des bases enquete-pastorale.irstea
-
-/* OPERATIONS
-
-INSTALL
-=======
+INSTALL O2
+==========
+Cpanel -> Bases de données MySQL
 Créer BDD
+Ajouter un nouvel utilisateur
+Ajouter un nouvel utilisateur à la base de données
 Copier PhpBB3 sauf doc
 Copier repertoire de GeoBB + aspir_import.php
 Lancer install
 -> Français -> Change
 Installer -> Installer
-config.php -> clés cartes : $geo_keys = [...]
-Paramètres de cookie -> Domaine du cookie : VIDE
 Supprimer install
+config.php -> clés cartes : $geoKeys = [...]
 Administration ==>
-Genéral -> Paramètres des fichiers joints -> Taille maximale du fichier : : 5 Mo
+Général -> Gérer les forums -> Créer
+	Alpages [first=surface][/first][fiche=Alpages][/fiche]
+	Cabanes [first=point][/first][fiche=Cabanes][/fiche] ext/Dominique92/GeoBB/types_points/cabane.png
+	Points d'eau [first=point][/first][fiche=Points d'eau][/fiche] ext/Dominique92/GeoBB/types_points/point_eau.png
+	Réseau ....
+	Forum des utilisateurs
+	catégorie Coin des modérateurs, Configuration, Formulaires, Bienvenue, Aide, 
+	catégorie Bugs et améliorations, Bugs et améliorations résolus, Echanges entre modérateurs
+Genéral -> Paramètres des fichiers joints -> Quota & taille maximale du fichier : 0
 Général -> Configuration du forum -> Libellé du site Internet :
 Genéral -> Paramètres de cookie -> Domaine du cookie : VIDE
 Général -> Paramètres du serveur -> Activer la compression GZip : oui
+Général -> Paramètres de charge -> Recompiler les différents éléments du style : non
+Messages -> Ajouter un bbcode -> [first={TEXT}][/first] / <span></span> / ne pas oublier [/first] dans les forum_desc
+Messages -> Ajouter un bbcode -> [fiche={TEXT}][/fiche] / <span></span> / ne pas oublier [/fiche] dans les forum_desc
+Permissions -> Permissions des forums -> Coin des modérateurs + Configuration + Bugs * + Echanges -> Envoyer
+	Robots + Invités + Utilisateurs * -> Aucun accès -> Appliquer toutes
+Permissions -> Permissions des forums -> Alpages + Cabanes + Forum utilisateurs
+	Utilisateurs * enregistrés -> Accès standard -> Appliquer toutes
 Personnaliser -> Désactiver VigLink
 Personnaliser -> Installation de styles -> Aspir -> Détails -> Définir comme style par défaut
 Personnaliser -> Gérer de styles -> Prosilver -> Désactiver
-Messages -> Ajouter un bbcode -> [first={TEXT}][/first] / <span></span> / ne pas oublier [/first] dans les forum_desc
-Messages -> Ajouter un bbcode -> [fiche={TEXT}][/fiche] / <span></span> / ne pas oublier [/fiche] dans les forum_desc
-Général -> Gérer les forums -> Créer Alpages, Cabanes, Points d'eau, Forum des utilisateurs
-	catégorie Coin des modérateurs, Configuration, Formulaires, Bienvenue, Aide, 
-	catégorie Bugs et améliorations, Bugs et améliorations résolus
-Permissions -> Permissions des forums -> Coin des modérateurs + Configuration . Bugs * -> Envoyer
-	Robots + Invités + Utilisateurs * enregistrés -> Aucun accès -> Appliquer toutes
-Permissions -> Permissions des forums -> Alpages + Cabanes + Forum utilisateurs
-	Utilisateurs * enregistrés -> Accès standard -> Appliquer toutes
-Créer un item d'Alpage, Cabane, Point d'eau
-Exécuter aspir_import.php ...
+Créer les sujets de configuration : Formulaires, Aide, Bienvenue
+Créer un item d'Alpage, Cabane, Point d'eau, Réseau
+Exécuter ext/Dominique92/GeoBB/styles/aspir/import
+Move ext/Dominique92/GeoBB/styles/aspir/import/LOG/... LOG/
 Administration -> Gérer les forums -> Alpages -> Resynchroniser
+Supprimer assets/geoPHP
+Supprimer ext/.../aspir/import
+
+Clean
+DELETE FROM phpbb_posts WHERE post_id > 8
+
+UPDATE PHPBB
+============
+Copy full package sauf config.php & docs
+Run /install/app.php/update (on peut lancer la racine avant)
+Français -> Change
+Mise à jour
+Mettre à jour uniquement la base de données -> Envoyer
+Attendre 100%
+Supprimer /install
 
 ACCEPTER MODERATEUR
 ===================
 Administration -> Gérer les membres -> formulaire : Groupes -> Ajouter ce membre au groupe : Modérateurs globaux -> Définir comme groupe par défaut
 
-
 						UPDATE VERSION PHPBB
 						====================
-						//TODO ASPIR test 1&1 & migation
 						copier full package
 						install/app.php/update -> database only
 						delete install
@@ -78,6 +96,7 @@ Champ 3 = nature du champ qui peut être :
 - 0 : la saisie sera numérique
 - court : la saisie sera une zone texte de 1 ligne
 - long : la saisie sera une zone de texte comprenant plusieurs lignes
+- confidentiel : le champs ne sera affiché que si l'utilisateur est connecté
 - plusieurs valeurs séparées par une , : liste de choix
 - date : une date
 - proches : la liste des plus proches géographiquement (les alpages)
@@ -93,10 +112,11 @@ Alpages
 =======
 surface|Surface|automatique|ha
 commune|Commune|automatique
-irstea_code|Code Irstea|automatique
-irstea_type|Type Irstea|automatique
-unite_pastorale|Unite Pastorale Irstea|automatiqueign|Carte IGN|automatique
-reserve|Par ou réserve|automatique
+irstea_code||automatique
+irstea_type||automatique
+unite_pastorale||automatique
+ign|Carte IGN|automatique
+reserve|Parc ou réserve|automatique
 {|1. L'alpage
 {|1.1 Équipements
 {|Autres équipements disponibles
@@ -246,17 +266,17 @@ berger_eleveur|- éleveur berger|oui,non,ne sait pas
 berger_temps_travail|- temps de travail|court
 berger_contrat|- type de contrat|court
 berger_autre|- autres informations|court
-berger_contact_ancien|- contact ancien berger|court
+berger_contact_ancien|- contact ancien berger|confidentiel
 }
 }}
-{|5. Le responsable d'alpage
+{|6. Le responsable d'alpage
 forme_juridique|- Forme juridique|Groupement pastoral,Groupement d'employeurs pour l'insertion et la qualification,Exploitant individuel,Autre
 forme_juridique_autre|Autre forme juridique|court
 {|Siège social de l'employeur
 forme_juridique_commune|- commune|court
 forme_juridique_departement|- département|court
 }
-|6. Autres informations :
+|7. Autres informations :
 
 Cabanes
 =======
@@ -320,169 +340,3 @@ point_eau_debit|Débit|source,rivière,point d'eau permanent,point d'eau semi pe
 }
 |Autres informations :
 
-*/
-
-echo"<p>
-<a href='aspir_import.php?d=01'>01</a> &nbsp; 
-<a href='aspir_import.php?d=04'>04</a> &nbsp; 
-<a href='aspir_import.php?d=05'>05</a> &nbsp; 
-<a href='aspir_import.php?d=07'>07</a> &nbsp; 
-<a href='aspir_import.php?d=13'>13</a> &nbsp; 
-<a href='aspir_import.php?d=26'>26</a> &nbsp; 
-<a href='aspir_import.php?d=38'>38</a> &nbsp; 
-<a href='aspir_import.php?d=42'>42</a> &nbsp; 
-<a href='aspir_import.php?d=43'>43</a> &nbsp; 
-<a href='aspir_import.php?d=63'>63</a> &nbsp; 
-<a href='aspir_import.php?d=69'>69</a> &nbsp; 
-<a href='aspir_import.php?d=73'>73</a> &nbsp; 
-<a href='aspir_import.php?d=74'>74</a> &nbsp; 
-<a href='aspir_import.php?d=83'>83</a> &nbsp; 
-<a href='aspir_import.php?d=84'>84</a> &nbsp; 
-</p>";
-
-define('IN_PHPBB', true);
-$phpbb_root_path = (defined('PHPBB_ROOT_PATH')) ? PHPBB_ROOT_PATH : './';
-$phpEx = substr(strrchr(__FILE__, '.'), 1);
-include($phpbb_root_path . 'common.' . $phpEx);
-include($phpbb_root_path . 'includes/functions_posting.' . $phpEx);
-
-include_once('./assets/geoPHP/geoPHP.inc');
-include_once('./assets/proj4php/vendor/autoload.php');
-use proj4php\Proj4php;
-use proj4php\Proj;
-use proj4php\Point;
-
-// Start session management
-$user->session_begin();
-$auth->acl($user->data);
-$user->setup();
-
-// Initialise Proj4
-$proj4 = new Proj4php();
-$projSrc = new Proj('EPSG:3857', $proj4);
-$projDst = new Proj('EPSG:4326', $proj4);
-
-// Parameters
-$epid = $request->variable('d', '00');
-$upzp = $request->variable('p', 'UP');
-$alp_forum_id = $request->variable('f', 2);
-echo"<pre style='background-color:white;color:black;font-size:14px;'>Import enquete ".var_export($upzp.':'.$epid,true).'</pre>';
-
-// Get irstea list
-// http://enquete-pastorale.irstea.fr/getPHP/getUPJSON.php?id=38
-// http://enquete-pastorale.irstea.fr/getPHP/getZPJSON.php?id=38
-$epifile = file_get_contents ('http://enquete-pastorale.irstea.fr/getPHP/get'.$upzp.'JSON.php?id='.$epid);
-$epiphp = json_decode($epifile);
-conv_3857_to_4326($epiphp);
-function conv_3857_to_4326(&$p){
-	global $proj4, $projSrc, $projDst;
-	if($p->features)
-		conv_3857_to_4326($p->features);
-	if($p->geometry)
-		conv_3857_to_4326($p->geometry);
-	if($p->coordinates)
-		conv_3857_to_4326($p->coordinates);
-	if(gettype($p) == 'array') {
-		if (gettype($p[0]) == 'integer'){
-			$pointSrc = new Point($p[0], $p[1], $projSrc);
-			$pointDest = $proj4->transform($projDst, $pointSrc);
-			$p[0] = $pointDest->__get('x');
-			$p[1] = $pointDest->__get('y');
-		} else
-			foreach($p AS &$p1)
-				conv_3857_to_4326($p1);
-	}
-}
-
-$stay_lower = ['le','la','les','du','de','des','sur'];
-
-foreach ($epiphp->features as $p)
-	if($p->geometry) {
-		// Get geometry
-		$geomjson = json_encode($p->geometry);
-		$geomphp = \geoPHP::load ($geomjson, 'json');
-		$geomsql = 'GeomFromText("'.$geomphp->out('wkt').'")';
-
-		// Normalise data
-		if (!$p->properties->surface)
-			$p->properties->surface = 0;
-		if (!$p->properties->nom1)
-			$p->properties->nom1 = $p->properties->code;
-		$p->properties->nom1 = str_replace('_', ' ',
-		$p->properties->nom1);
-		$p->properties->nom1 = ucfirst (preg_replace_callback (
-			'/([A-Z]+)/',
-			function ($m) {
-				global $stay_lower;
-				$r = strtolower($m[0]);
-				return in_array ($r, $stay_lower) || !$r[1] // l'xxx, d'xxx
-					? $r
-					: ucfirst ($r);
-			},
-			$p->properties->nom1
-		));
-
-		// Check existing subject
-		$sql = "SELECT * FROM phpbb_posts WHERE geo_irstea_code = '{$p->properties->code}'";
-		$result = $db->sql_query($sql);
-		$data = $db->sql_fetchrow($result);
-		$db->sql_freeresult($result);
-
-		//  Création d'une fiche
-		if ($p->geometry->coordinates && !$data['topic_id']) {
-			echo '<pre style="background-color:white;color:black;font-size:14px;">Céation de '.var_export($p->properties->nom1,true).'</pre>';
-
-			$data = [
-				'forum_id' => $alp_forum_id,
-				'topic_id' => 0, // Le créer
-				'post_id' => 0, // Le créer
-				'post_subject' => $p->properties->nom1,
-				'message' => '',
-				'message_md5' => md5(''),
-				'bbcode_bitfield' => 0,
-				'bbcode_uid' => 0,
-				'icon_id' => 0,
-				'enable_bbcode' => true,
-				'enable_smilies' => true,
-				'poster_id' => $user->data['user_id'],
-				'enable_urls' => true,
-				'enable_sig' => true,
-				'topic_visibility' => true,
-				'post_visibility' => true,
-				'enable_indexing' => true,
-				'post_edit_locked' => false,
-				'notify_set' => false,
-				'notify' => false,
-			];
-			$poll = [];
-			\submit_post(
-				'post',
-				$p->properties->nom1,
-				$user->data['username'],
-				POST_NORMAL,
-				$poll,
-				$data
-			);
-		}
-
-		// Update geo_ data
-		if ($data['post_id']) {
-			$sql = "UPDATE phpbb_topics 
-					SET topic_title = '".str_replace ("'", "\\'", $p->properties->nom1)."'
-					WHERE topic_id = {$data['topic_id']}";
-			$result = $db->sql_query($sql);
-		}
-
-		// Update geo_ data
-		if ($data['post_id']) {
-			$sql = "UPDATE phpbb_posts
-					SET geom = $geomsql,
-					post_subject = '".str_replace ("'", "\\'", $p->properties->nom1)."',
-					geo_unite_pastorale = '".str_replace ("'", "\\'", $p->properties->nom1)."',
-					geo_surface = {$p->properties->surface},
-					geo_irstea_code = '{$p->properties->code}',
-					geo_irstea_type = '$upzp:$epid'
-				WHERE post_id = {$data['post_id']}";
-			$result = $db->sql_query($sql);
-		}
-	}

@@ -38,10 +38,10 @@ if (empty($lang) || !is_array($lang))
 //
 
 $lang = array_merge($lang, array(
-//TODO-BEST reprendre tous les textes dans GeoBB
+//TODO-ARCHI reprendre tous les textes dans GeoBB
 	// Fil d'ariane
-	'FORUM_INDEX' => 'Accueil',
-	'RETURN_TO_INDEX' => 'Accueil',
+	'FORUM_INDEX' => 'Accueil', //TODO DELETE (ne va pas le chercher là !!!)
+	'RETURN_TO_INDEX' => 'Accueil', //TODO DELETE ???
 	'ACP_SHORT' => 'Administration',
 	'MCP_SHORT' => 'Modération',
 
@@ -52,6 +52,13 @@ $lang = array_merge($lang, array(
 	// Posting
 	'SUBJECT' => 'Nom',
 
+	// Help
+	'FAQ' => 'Aide',
+	'FAQ_EXPLAIN' => 'Documentation des fonctions du site',
+
 	// Footer
-	'FINAL_INTEGRATION_BY' => 'Copyright &copy; <a href="https://github.com/Dominique92">Dominique Cavailhez</a> 2016. Sur la base de PhpBB',
+	'FINAL_INTEGRATION_BY' =>
+		'&copy; Dominique Cavailhez 2016 <a href="https://github.com/Dominique92/GeoBB32">GeoBB32</a> &amp; '.
+		'<a href="https://github.com/Dominique92/MyOl">MyOl</a>, '.
+		'based on <a href="https://www.phpbb.com/">phpBB</a>',
 ));
