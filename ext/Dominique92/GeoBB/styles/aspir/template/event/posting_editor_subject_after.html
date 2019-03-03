@@ -1,7 +1,10 @@
 <!-- IF GEO_MAP_TYPE and POST_ID == TOPIC_FIRST_POST_ID -->
 <!-- INCLUDE map.html -->
 
-<div id="map"></div>
+<div id="map-frame">
+	<div id="map"></div>
+	<!-- INCLUDE overall_map_selector.html -->
+</div>
 <input id="editable-json" name="geom-geometry" type="hidden" value='{GEOJSON}' />
 
 <dl class="posting-point" style="clear: left;">
@@ -29,8 +32,14 @@
 	var map, editable, permaCenter;
 	window.addEventListener('load', function() {
 		var eljson = document.getElementById('editable-json'),
-			overlay = aspirLayer(0, {TOPIC_ID}, true);
-			
+			overlay = aspirLayer({
+				topidIdExclude: {TOPIC_ID},
+				<!-- IF GEO_MAP_TYPE == 'surface' -->
+					transparency: [0, 1, 2],
+				<!-- ENDIF -->
+				noLabel: true
+			});
+
 		map = new ol.MyMap({
 			target: 'map',
 			layers: [
@@ -40,7 +49,7 @@
 				geoKeys: {GEO_KEYS},
 				controlPermalink: {
 					visible: false,
-					init: eljson.innerHTML.search(/[0-9]/) == -1, // If a valid coordinate is specified
+					init: eljson.value.search(/[0-9]/) == -1, // If a valid coordinate is specified
 					initialCenter: function(c) {
 						permaCenter = c;
 					}
@@ -52,8 +61,11 @@
 		<!-- IF GEO_MAP_TYPE == 'point' -->
 			editable = marker('{EXT_DIR}images/viseur.png', 'editable', permaCenter, true);
 			map.addLayer(editable);
-		<!-- ELSE -->
-			eljson.value = eljson.value.replace(':]',':[]'); //TODO hack for O2switch sql bug / still here ?
+			map.getView().fit(editable.getSource().getExtent());
+			map.getView().setZoom(15);
+
+		<!-- ELSE --> // line / surface
+			eljson.value = eljson.value.replace(':]',':[]'); //TODO hack for O2switch sql MariaDB bug / still here ?
 			var edit = controlEdit({
 				inputId: 'editable-json',
 				snapLayers: [overlay],

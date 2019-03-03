@@ -6,6 +6,7 @@
  * @license http://opensource.org/licenses/gpl-2.0.php GNU General Public License v2
  *
  */
+//TODO ASPIR ajouter champs enregistrement : ucp_register.html
 
 namespace Dominique92\GeoBB\event;
 
@@ -519,6 +520,7 @@ class listener implements EventSubscriberInterface
 		) {
 			global $geo_keys;
 			//TODO BLOQUANT BUG : ne pas redemander pour les surfaces où c'est 0
+			//TODO BLOQUANT BUG : mapquestapi est limité en nb de requettes !!!
 			$mapquest = @file_get_contents (
 				'http://open.mapquestapi.com/elevation/v1/profile'.
 				'?key='.$geo_keys['mapquest'].
@@ -776,7 +778,7 @@ XML
 						ksort ($options); //TODO BEST trier en fonction du bord le plus prés / pas du centre
 						$this->db->sql_freeresult($result);
 					} else
-						$vars['INNER'] .= ' : <span style="color:red">indisponible en création<span>';
+						$vars['STYLE'] = 'display:none'; // Hide at posting
 				}
 
 				// sql_id|titre|attaches

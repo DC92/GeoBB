@@ -3,14 +3,14 @@ function aspirControls(options) {
 	return [
 		controlLayersSwitcher({
 			baseLayers: {
+				'Satellite': layerGoogle('s'),
+				'Google hybrid': layerGoogle('s,h'),
 				'OSM': layerOSM('//{a-c}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png'),
 				'OSM topo': layerOSM(
 					'//{a-c}.tile.opentopomap.org/{z}/{x}/{y}.png',
 					'<a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
 				),
 				'IGN': layerIGN(options.geoKeys.IGN, 'GEOGRAPHICALGRIDSYSTEMS.MAPS'),
-				'IGN topo': layerIGN(options.geoKeys.IGN, 'GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN-EXPRESS.CLASSIQUE'),
-				'Satellite': layerGoogle('s'),
 				'Cadastre': layerIGN(options.geoKeys.IGN, 'CADASTRALPARCELS.PARCELS', 'image/png')
 			}
 		}),
@@ -24,7 +24,9 @@ function aspirControls(options) {
 			className: 'ol-coordinate',
 			undefinedHTML: String.fromCharCode(0)
 		}),
-		controlPermalink(options.controlPermalink),
+		controlPermalink(ol.assign({
+			initialFit: options.geoKeys.initialFit
+		}, options.controlPermalink)),
 		new ol.control.Zoom(),
 		new ol.control.FullScreen({
 			label: '',
@@ -59,21 +61,21 @@ var topicStyleOptions = {
 			color: 'rgba(0,0,0,0.3)'
 		}),
 		stroke: new ol.style.Stroke({
-			color: 'black'
+			color: 'white'
 		})
 	},
 	editStyleOptions = {
 		stroke: new ol.style.Stroke({
-			color: 'black',
+			color: 'white',
 			width: 2
 		})
 	},
-	titleEdit = "Cliquer et déplacer un sommet pour modifier un polygone\n"+
-		"Cliquer sur un segment puis déplacer pour créer un sommet\n"+
-		"Alt + cliquer sur un sommet pour le supprimer\n"+
-		"Ctrl + Alt + cliquer sur un côté d 'un polygone pour le supprimer";
+	titleEdit = "Cliquer et déplacer un sommet pour modifier un polygone\n" +
+	"Cliquer sur un segment puis déplacer pour créer un sommet\n" +
+	"Alt + cliquer sur un sommet pour le supprimer\n" +
+	"Ctrl + Alt + cliquer sur un côté d 'un polygone pour le supprimer";
 
-function layerStyleOptionsFunction(properties, id, hover) {
+function layerStyleOptionsFunction(properties, idSelect, transparency /* [fill, stroke] */ ) {
 	if (properties.icon)
 		return {
 			image: new ol.style.Icon({
@@ -82,32 +84,40 @@ function layerStyleOptionsFunction(properties, id, hover) {
 		};
 
 	// The selected property
-	if (properties.id == id)
+	if (properties.id == idSelect)
 		return topicStyleOptions;
 
 	var cs = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(properties.color),
-		colorTr = 'rgba(' + parseInt(cs[1], 16) + ',' + parseInt(cs[2], 16) + ',' + parseInt(cs[3], 16) + ',';
+		featureRGBA = 'rgba(' + parseInt(cs[1], 16) + ',' + parseInt(cs[2], 16) + ',' + parseInt(cs[3], 16) + ',';
 	return {
 		fill: new ol.style.Fill({
-			color: hover ? colorTr + '0.2)' : colorTr + '0.5)'
+			color: featureRGBA + transparency[0] + ')'
 		}),
 		stroke: new ol.style.Stroke({
-			color: hover ? colorTr + '1)' : colorTr + '0.5)'
+			color: featureRGBA + transparency[1] + ')',
+			width: transparency[2] || 1
 		})
 	};
 }
 
-function aspirLayer(idColor, idExclude, noHover) {
+function aspirLayer(o) {
+	const options = ol.assign({
+		topidIdExclude: '',
+		transparency: [0.5, 0.5],
+		hoverTransparency: [0, 1]
+	}, o);
+
 	return new ol.layer.LayerVectorURL({
-		baseUrl: 'ext/Dominique92/GeoBB/gis.php?limit=10000&exclude=' + idExclude + '&',
+		baseUrl: 'ext/Dominique92/GeoBB/gis.php?limit=10000&exclude=' + options.topidIdExclude + '&forums=',
+		selectorName: 'couches-alpages',
 		styleOptions: function(properties) {
-			return layerStyleOptionsFunction(properties, idColor);
+			return layerStyleOptionsFunction(properties, options.topidIdSelect, options.transparency);
 		},
 		hoverStyleOptions: function(properties) {
-			return layerStyleOptionsFunction(properties, idColor, !noHover);
+			return layerStyleOptionsFunction(properties, options.topidIdSelect, options.hoverTransparency);
 		},
 		label: function(properties) {
-			return noHover ? null : '<a href="viewtopic.php?t=' + properties.id + '">' + properties.name + '<a>';
+			return options.noLabel ? null : '<a href="viewtopic.php?t=' + properties.id + '">' + properties.name + '<a>';
 		},
 		href: function(properties) {
 			return 'viewtopic.php?t=' + properties.id;
