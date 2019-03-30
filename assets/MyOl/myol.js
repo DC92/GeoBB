@@ -140,8 +140,7 @@ function layerIGN(key, layer, format) {
 			format: format || 'image/jpeg',
 			tileGrid: IGNtileGrid,
 			style: 'normal',
-			attributions: '<a href="http://www.geoportail.fr/" target="_blank">' +
-				'<img src="https://api.ign.fr/geoportail/api/js/latest/theme/geoportal/img/logo_gp.gif"></a>'
+			attributions: '&copy; <a href="http://www.geoportail.fr/" target="_blank">IGN</a>'
 		})
 	});
 }
@@ -1160,8 +1159,10 @@ function controlGPS(options) {
 				geolocation.setTracking(active);
 				if (active)
 					this_.getMap().addLayer(layer);
-				else
+				else {
 					this_.getMap().removeLayer(layer);
+					this_.getMap().getView().setRotation(0);
+				}
 			}
 		}),
 		// Interface with the GPS system
@@ -1176,8 +1177,14 @@ function controlGPS(options) {
 	});
 
 	geolocation.on('change', function() {
-		const position = ol.proj.fromLonLat(this.getPosition());
-		this_.getMap().getView().setCenter(position);
+		const position = ol.proj.fromLonLat(this.getPosition()),
+			view = this_.getMap().getView();
+		view.setCenter(position);
+
+		if (!this.done) { // Only once
+			this.done = true;
+			view.setZoom(17); // Zoom on the area
+		}
 
 		// Redraw the marker
 		feature.setGeometry(new ol.geom.GeometryCollection([

@@ -252,7 +252,7 @@ class listener implements EventSubscriberInterface
 			$sql_ary = $vars['sql_ary'];
 			$sql_ary['SELECT'] .=
 				', ST_AsGeoJSON(geom) AS geojson'.
-				', ST_AsGeoJSON(ST_Centroid(geom)) AS centerwkt'.
+				', ST_AsGeoJSON(ST_Centroid(ST_Envelope(geom))) AS centerwkt'.
 				', ST_Area(geom) AS area';
 			$vars['sql_ary'] = $sql_ary;
 		}
@@ -346,6 +346,7 @@ class listener implements EventSubscriberInterface
 		if (!$post_data['post_subject'])
 			$page_data['DRAFT_SUBJECT'] = $this->post_name ?: 'Nom';
 
+		$page_data['EDIT_REASON'] = 'Modération'; // For display in news
 		$page_data['TOPIC_ID'] = $post_data['topic_id'] ?: 0;
 		$page_data['POST_ID'] = $post_data['post_id'] ?: 0;
 		$page_data['TOPIC_FIRST_POST_ID'] = $post_data['topic_first_post_id'] ?: 0;
@@ -357,7 +358,7 @@ class listener implements EventSubscriberInterface
 				$page_data[strtoupper ($k)] =
 					strstr($v, '~') == '~' ? null : $v; // Clears fields ending with ~ for automatic recalculation
 
-		$this->topic_fields('info', $post_data, $post_data['forum_desc'], $post_data['forum_name']);
+		$this->topic_fields('info', $post_data, $post_data['forum_desc'], $post_data['forum_name'], true);
 		$this->geobb_activate_map($post_data['forum_desc'], $post_data['post_id'] == $post_data['topic_first_post_id']);
 
 		// HORRIBLE phpbb hack to accept geom values //TODO-ARCHI : check if done by PhpBB (supposed 3.2)
@@ -519,19 +520,10 @@ class listener implements EventSubscriberInterface
 			$row['center']
 		) {
 			global $geo_keys;
-			//TODO BLOQUANT BUG : ne pas redemander pour les surfaces où c'est 0
-			//TODO BLOQUANT BUG : mapquestapi est limité en nb de requettes !!!
-			$mapquest = @file_get_contents (
-				'http://open.mapquestapi.com/elevation/v1/profile'.
-				'?key='.$geo_keys['mapquest'].
-				'&callback=handleHelloWorldResponse'.
-				'&shapeFormat=raw'.
-				'&latLngCollection='.$row['center'][1].','.$row['center'][0]
-			);
-			if ($mapquest) {
-				preg_match ('/"height":([0-9]+)/', $mapquest, $match);
+			$api = "http://wxs.ign.fr/{$geo_keys['IGN']}/alti/rest/elevation.json?lon={$row['center'][0]}&lat={$row['center'][1]}&zonly=true";
+			preg_match ('/([0-9]+)/', @file_get_contents($api), $match);
+			if ($match)
 				$update['geo_altitude'] = $match[1];
-			}
 		}
 
 		// Infos refuges.info
@@ -650,7 +642,8 @@ XML
 
 		// Update de la base
 		foreach ($update AS $k=>$v)
-			if (array_key_exists($k, $row))
+			if (!$row[$k] &&
+				array_key_exists($k, $row))
 				$update[$k] .= '~';
 			else
 				unset ($update[$k]);
@@ -669,7 +662,7 @@ XML
 	}
 
 	// Form management
-	function topic_fields ($block_name, $post_data, $forum_desc, $forum_name) {
+	function topic_fields ($block_name, $post_data, $forum_desc, $forum_name, $posting = false) {
 		// Get form fields from the relative post
 		preg_match ('/\[fiche=([^\]]+)\]/i', $forum_desc, $match); // Try in forum_desc [fiche=Alpages][/fiche]
 		$sql = "
@@ -691,11 +684,19 @@ XML
 			// Default tags
 			$vars['TAG1'] = $sql_id = 'p';
 			$sql_id = 'geo_'.$dfs[0];
+
+			// Clears fields ending with ~ for automatic recalculation
+			if($posting   &&
+				strstr($post_data[$sql_id], '~') == '~')
+				$post_data[$sql_id] = '';
+			else
+				$post_data[$sql_id] = str_replace ('~', '', $post_data[$sql_id]);
+
 			$vars['INNER'] = $dfs[1];
 			$vars['TYPE'] = $dfs[2];
 			$vars['SQL_TYPE'] = 'text';
 			$vars['DISPLAY_VALUE'] =
-			$vars['POST_VALUE'] =
+			$vars['VALUE'] =
 				str_replace ('~', '', $post_data[$sql_id]);
 			$options = explode (',', ','.$dfs[2]); // One empty at the beginning
 
@@ -757,7 +758,7 @@ XML
 						$km = 3; // Search maximum distance
 						$bbox = ($point[0][0]-.0127*$km).' '.($point[0][1]-.009*$km).",".($point[0][0]+.0127*$km).' '.($point[0][1]+.009*$km);
 						$sql = "
-							SELECT post_subject, topic_id, ST_AsText(ST_Centroid(geom)) AS centre
+							SELECT post_subject, topic_id, ST_AsText(ST_Centroid(ST_Envelope(geom))) AS center
 							FROM ".POSTS_TABLE."
 							WHERE ST_Dimension(geom) > 0 AND
 								MBRIntersects(geom, ST_GeomFromText('LINESTRING($bbox)',4326))
@@ -765,11 +766,11 @@ XML
 						$result = $this->db->sql_query($sql);
 						$options = ['d0' => []]; // First line empty
 						while ($row = $this->db->sql_fetchrow($result)) {
-							preg_match_all ('/([0-9\.]+)/', $row['centre'], $row['center']);
+							preg_match_all ('/([0-9\.]+)/', $row['center'], $row['center']);
 							$dist2 = 1 + pow ($row['center'][0][0] - $point[0][0], 2) + pow ($row['center'][0][1] - $point[0][1], 2) * 2;
 							$options['d'.$dist2] = $row;
-							if ($row['topic_id'] == $vars['POST_VALUE']) {
-								$vars['POST_VALUE'] = // For posting.pgp initial select
+							if ($row['topic_id'] == $vars['VALUE']) {
+								$vars['VALUE'] = // For posting.pgp initial select
 								$vars['DISPLAY_VALUE'] = // For viewtopic.php display
 									$row['post_subject'];
 								$vars['HREF'] = 'viewtopic.php?t='.$row['topic_id'];
@@ -814,7 +815,7 @@ XML
 					$vars['STYLE'] = 'display:none'; // Hide at posting
 					$vars['TYPE'] = 'hidden';
 					$vars['POSTAMBULE'] = $dfs[3];
-					$vars['POST_VALUE'] = null; // Set the value to null to ask for recalculation
+					$vars['VALUE'] = null; // Set the value to null to ask for recalculation
 				}
 
 				// sql_id|titre|0
@@ -870,7 +871,7 @@ XML
 				foreach ($attaches AS $v) {
 					$this->template->assign_block_vars($block_name.'.attaches', array_change_key_case ($v, CASE_UPPER));
 					if (count (explode ('.', $block_name)) == 1)
-						$this->topic_fields ($block_name.'.attaches.detail', $v, null, $v['forum_name']);
+						$this->topic_fields ($block_name.'.attaches.detail', $v, null, $v['forum_name'], $posting);
 				}
 			}
 		}
