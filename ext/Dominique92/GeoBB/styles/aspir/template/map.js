@@ -1,5 +1,15 @@
-function aspirControls(options) {
-	options = options || {};
+// Resize
+$('#map').resizable({
+	handles: 's,w,sw', // 2 côtés et 1 coin
+	resize: function(evt, ui) {
+		ui.position.left = ui.originalPosition.left; // Reste à droite de la page
+	},
+	stop: function(evt) {
+		evt.target.map_.updateSize();
+	}
+});
+
+function geoControls(options) {
 	return [
 		controlLayersSwitcher({
 			baseLayers: {
@@ -39,22 +49,14 @@ function aspirControls(options) {
 	];
 }
 
-// Resize
-$('#map').resizable({
-	handles: 's,w,sw', // 2 côtés et 1 coin
-	resize: function(evt, ui) {
-		ui.position.left = ui.originalPosition.left; // Reste à droite de la page
-	},
-	stop: function(evt) {
-		evt.target.map_.updateSize();
-	}
-});
-
 // The style of selected & edited topic
 var topicStyleOptions = {
 		image: new ol.style.Circle({
 			radius: 4,
 			fill: new ol.style.Fill({
+				color: 'white'
+			}),
+			stroke: new ol.style.Stroke({
 				color: 'black'
 			})
 		}),
@@ -74,7 +76,7 @@ var topicStyleOptions = {
 	titleEdit = "Cliquer et déplacer un sommet pour modifier un polygone\n" +
 	"Cliquer sur un segment puis déplacer pour créer un sommet\n" +
 	"Alt + cliquer sur un sommet pour le supprimer\n" +
-	"Ctrl + Alt + cliquer sur un côté d 'un polygone pour le supprimer";
+	"Ctrl + Alt + cliquer sur un côté d'un polygone pour le supprimer";
 
 function layerStyleOptionsFunction(properties, idSelect, transparency /* [fill, stroke] */ ) {
 	if (properties.icon)
@@ -88,7 +90,7 @@ function layerStyleOptionsFunction(properties, idSelect, transparency /* [fill, 
 	if (properties.id == idSelect)
 		return topicStyleOptions;
 
-	var cs = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(properties.color),
+	const cs = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(properties.color),
 		featureRGBA = 'rgba(' + parseInt(cs[1], 16) + ',' + parseInt(cs[2], 16) + ',' + parseInt(cs[3], 16) + ',';
 	return {
 		fill: new ol.style.Fill({
@@ -101,15 +103,15 @@ function layerStyleOptionsFunction(properties, idSelect, transparency /* [fill, 
 	};
 }
 
-function aspirLayer(o) {
+function geoOverlays(o) {
 	const options = ol.assign({
 		topidIdExclude: '',
 		transparency: [0.5, 0.5],
 		hoverTransparency: [0, 1]
 	}, o);
 
-	return new ol.layer.LayerVectorURL({
-		baseUrl: 'ext/Dominique92/GeoBB/gis.php?limit=10000&exclude=' + options.topidIdExclude + '&forums=',
+	return [new ol.layer.LayerVectorURL({
+		baseUrl: 'ext/Dominique92/GeoBB/gis.php?limit=500&exclude=' + options.topidIdExclude + '&forums=',
 		selectorName: 'couches-alpages',
 		styleOptions: function(properties) {
 			return layerStyleOptionsFunction(properties, options.topidIdSelect, options.transparency);
@@ -123,5 +125,5 @@ function aspirLayer(o) {
 		href: function(properties) {
 			return 'viewtopic.php?t=' + properties.id;
 		}
-	});
+	})];
 }

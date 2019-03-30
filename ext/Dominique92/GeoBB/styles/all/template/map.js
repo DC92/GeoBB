@@ -1,4 +1,5 @@
 // Resize
+//TODO ARCHI centralize in one file
 $('#map').resizable({
 	handles: 's,w,sw', // 2 côtés et 1 coin
 	resize: function(evt, ui) {
@@ -9,29 +10,11 @@ $('#map').resizable({
 	}
 });
 
-/*
-//TODO-CHEM complete chemineur
-function postLabel(properties, feature, layer, pixel, ll4326) {
-	var type = typeof layer.options_.type == 'function' ?
-		layer.options_.type(properties, feature, layer, pixel, ll4326) :
-		layer.options_.type || '',
-		name = typeof layer.options_.name == 'function' ?
-		layer.options_.name(properties, feature, layer, pixel, ll4326) :
-		layer.options_.name || '';
-
-	return ['<hr/><a title="Créer une fiche modifiable à partir du point" ' +
-			'href="posting.php?mode=post', //TODO-BEST spécifique : passer en argument
-			'type=' + type,
-			'name=' + (name || type),
-			'lon=' + Math.round(ll4326[0] * 100000) / 100000,
-			'lat=' + Math.round(ll4326[0] * 100000) / 100000
-		].join('&') +
-		'">Créer une fiche</a>';
-}
-*/
-
-/* Overlay vector layer from the GeoBB database */
-var topicStyleOptions = {
+//TODO minimize for prosilver
+var geoControls = controlsCollection,
+	//TODO ARCHI ==> 3 variable globales suivantes utilisée dans un autres ficher dans une fonction !!!
+	titleEdit = "//TODO button comment",
+	topicStyleOptions = { /* Editor style */
 		image: new ol.style.Circle({
 			radius: 4,
 			fill: new ol.style.Fill({
@@ -71,10 +54,9 @@ function layerStyleOptionsFunction(properties, id, hover) {
 		})
 	};
 }
-
-function geoLayer(idColor, idExclude, noHover) { // topic_id à colorier, topic_id à exclure, hover / non
-	return new ol.layer.LayerVectorURL({
-		baseUrl: 'ext/Dominique92/GeoBB/gis.php?limit=10000&exclude=' + idExclude + '&',
+function geoOverlays(idColor, idExclude, noHover) { // topic_id à colorier, topic_id à exclure, hover / non
+	return [new ol.layer.LayerVectorURL({
+		baseUrl: 'ext/Dominique92/GeoBB/gis.php?limit=300&exclude=' + idExclude + '&',
 		styleOptions: function(properties) {
 			return layerStyleOptionsFunction(properties, idColor);
 		},
@@ -87,5 +69,5 @@ function geoLayer(idColor, idExclude, noHover) { // topic_id à colorier, topic_
 		href: function(properties) {
 			return 'viewtopic.php?t=' + properties.id;
 		}
-	});
+	})];
 }
