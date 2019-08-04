@@ -6,14 +6,13 @@
  * @license http://opensource.org/licenses/gpl-2.0.php GNU General Public License v2
  *
  */
-//TODO ASPIR ajouter champs enregistrement : ucp_register.html
-//TODO revoir nommage fiches
-//TODO permutations POSTS dans le template modération
-//TODO Voir nommage GeoBB ou GeoBB32 !
-//TODO ne pas afficher les points en doublon (flux wri, prc, c2c)
-//TODO ASPIR modifier le mail de bienvenue à la connexion
-//TODO-ASPIR ??? recherche par département / commune
-//TODO mettre dans modération : déplacer les fichiers la permutation des posts => event/mcp_topic_postrow_post_before.html
+//TODO ALPAGES BEST recherche par département / commune
+//TODO TEST ALPAGES post modif mail inscription
+//TODO ALPAGES ajouter une information automatique sur les fiches alpages : par exemple les liens pour les départements 04 et 05
+//TODO BEST upgrade ALPAGES/CHEM : remplacer forumdesc par [hide]... (et bbcode !)
+//TODO AFTER WRI enlever /assets/wri
+//TODO CHEM BEST permutations POSTS dans le template modération : déplacer les fichiers la permutation des posts => event/mcp_topic_postrow_post_before.html
+//TODO CHEM ne pas afficher les points en doublon (flux wri, prc, c2c)
 
 namespace Dominique92\GeoBB\event;
 
@@ -26,6 +25,7 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 class listener implements EventSubscriberInterface
 {
+	// List of externals
 	public function __construct(
 		\phpbb\db\driver\driver_interface $db,
 		\phpbb\request\request_interface $request,
@@ -40,12 +40,15 @@ class listener implements EventSubscriberInterface
 		$this->auth = $auth;
 	}
 
-	// Liste des hooks et des fonctions associées
-	// On trouve le point d'appel en cherchant dans le logiciel de PhpBB 3.x: "event core.<XXX>"
+	// List of hooks and related functions
+	// We find the calling point by searching in the software of PhpBB 3.x: "event core.<XXX>"
 	static public function getSubscribedEvents() {
+		// For debug, Varnish will not be caching pages where you are setting a cookie
+		if (defined('TRACES_DOM'))
+			setcookie('disable-varnish', microtime(true), time()+600, '/');
+
 		return [
 			// All
-			'core.user_setup' => 'user_setup',
 			'core.page_footer' => 'page_footer',
 
 			// Index
@@ -69,6 +72,9 @@ class listener implements EventSubscriberInterface
 
 			// Resize images
 			'core.download_file_send_to_browser_before' => 'download_file_send_to_browser_before',
+
+			// Registration
+			'core.ucp_register_welcome_email_before' => 'ucp_register_welcome_email_before',
 		];
 	}
 
@@ -76,14 +82,11 @@ class listener implements EventSubscriberInterface
 	/**
 		ALL
 	*/
-	function user_setup($vars) {
-		// For debug, Varnish will not be caching pages where you are setting a cookie
-		if (defined('TRACES_DOM'))
-			setcookie('disable-varnish', microtime(true), time()+600, '/');
-	}
-	/*
-		return;//TODO DELETE ?
-		// Force le style 
+	function page_footer() {
+//		ob_start();var_dump($this->template);echo'template = '.ob_get_clean(); // VISUALISATION VARIABLES TEMPLATE
+
+		/*//TODO DELETE ?
+		// Force le style
 		$style_name = request_var ('style', '');
 		if ($style_name) {
 			$sql = 'SELECT * FROM '.STYLES_TABLE.' WHERE style_name = "'.$style_name.'"';
@@ -91,30 +94,23 @@ class listener implements EventSubscriberInterface
 			$row = $this->db->sql_fetchrow ($result);
 			$this->db->sql_freeresult ($result);
 			if ($row)
-				$vars['style_id'] =  $row ['style_id'];
+				$vars['style_id'] =  $row['style_id'];
 		}
-	*/
-
-	function page_footer() {
-//		ob_start();var_dump($this->template);echo'template = '.ob_get_clean(); // VISUALISATION VARIABLES TEMPLATE
-
-		// For debug, Varnish will not be caching pages where you are setting a cookie
-		if (defined('TRACES_DOM'))
-			setcookie('disable-varnish', microtime(true), time()+600, '/');
+		*/
 
 		// list of gis.php arguments for chemineur layer selector
 		$sql = "
 			SELECT category.forum_id AS category_id,
 				category.forum_name AS category_name,
-				forum.forum_id, forum.forum_name, forum.forum_desc
+				forum.forum_id
 			FROM ".FORUMS_TABLE." AS forum
 			JOIN ".FORUMS_TABLE." AS category ON category.forum_id = forum.parent_id
-			WHERE forum.forum_desc LIKE '%[first=%'
+			WHERE forum.forum_desc LIKE '%first=%'
 			ORDER BY forum.left_id
 		";
 		$result = $this->db->sql_query($sql);
 		while ($row = $this->db->sql_fetchrow($result))
-			$cats [$row['category_name']] [] = $row['forum_id'];
+			$cats[$row['category_name']] [] = $row['forum_id'];
 		$this->db->sql_freeresult($result);
 
 		if($cats)
@@ -124,9 +120,15 @@ class listener implements EventSubscriberInterface
 					'ARGS' => implode (',', $v),
 				]);
 
-		// Inclue les fichiers langages de cette extension
+		// Includes language files for this extension
 		$ns = explode ('\\', __NAMESPACE__);
 		$this->user->add_lang_ext($ns[0].'/'.$ns[1], 'common');
+
+		// Misc template values
+		$this->template->assign_vars([
+			'EXT_DIR' => 'ext/'.$ns[0].'/'.$ns[1].'/', // Répertoire de l'extension
+			'META_ROBOTS' => defined('META_ROBOTS') ? META_ROBOTS : '',
+		]);
 
 		// Assign post contents to some templates variables
 		$mode = $this-> request->variable('mode', '');
@@ -142,14 +144,18 @@ class listener implements EventSubscriberInterface
 			$result = $this->db->sql_query($sql);
 			$row = $this->db->sql_fetchrow($result);
 			$this->db->sql_freeresult($result);
-			if ($row)
-				$this->template->assign_var (
-					$v,
-					generate_text_for_display($row['post_text'],
+			if ($row) {
+				$this->messages[$k] = generate_text_for_display($row['post_text'],
 					$row['bbcode_uid'],
 					$row['bbcode_bitfield'],
-					OPTION_FLAG_BBCODE, true)
+					OPTION_FLAG_BBCODE,
+					true
 				);
+				$this->template->assign_var (
+					$v,
+					$this->messages[$k]
+				);
+			}
 		}
 	}
 
@@ -165,6 +171,7 @@ class listener implements EventSubscriberInterface
 			$row['forum_type'] == FORUM_POST)
 			$row['forum_name'] .= ' &nbsp; '.
 				'<a class="button" href="./posting.php?mode=post&f='.$row['forum_id'].'" title="Créer un nouveau sujet '.strtolower($row['forum_name']).'">Créer</a>';
+
 		$vars['row'] = $row;
 	}
 
@@ -172,14 +179,14 @@ class listener implements EventSubscriberInterface
 		$this->geobb_activate_map('[all=accueil]');
 
 		// Show the most recents posts on the home page
-		$news = request_var ('news', 12); // More news count
+		$news = request_var ('news', 15); // More news count
 		$this->template->assign_var ('PLUS_NOUVELLES', $news * 2);
 
 		$sql = "
-			SELECT p.post_id, p.post_attachment, p.post_time, p.poster_id,
-				t.topic_id, topic_title,topic_first_post_id, t.topic_posts_approved,
+			SELECT p.post_id, p.poster_id, p.post_edit_time,
+				t.topic_id, topic_title,topic_first_post_id,
 				f.forum_id, f.forum_name, f.forum_image,
-				u.username, p.post_edit_time,
+				u.username,
 				IF(post_edit_time > post_time, post_edit_time, post_time) AS post_or_edit_time
 			FROM	 ".TOPICS_TABLE." AS t
 				JOIN ".FORUMS_TABLE." AS f USING (forum_id)
@@ -192,8 +199,8 @@ class listener implements EventSubscriberInterface
 		$result = $this->db->sql_query($sql);
 		while ($row = $this->db->sql_fetchrow($result))
 			if ($this->auth->acl_get('f_read', $row['forum_id'])) {
-				//TODO BUG compte les posts des forums cachés dans le nb max
-				$row ['post_time'] = '<span title="'.$this->user->format_date ($row['post_time']).'">'.date ('j M', $row['post_time']).'</span>';
+				//TODO BEST BUG compte les posts des forums cachés dans le nb max
+				$row['post_or_edit_time'] = '<span>'.$this->user->format_date ($row['post_or_edit_time']).'</span>';
 				$this->template->assign_block_vars('news', array_change_key_case ($row, CASE_UPPER));
 			}
 		$this->db->sql_freeresult($result);
@@ -295,11 +302,130 @@ class listener implements EventSubscriberInterface
 		$this->db->sql_freeresult($result);
 	}
 
-	// Appelé lors de la première passe sur les données des posts qui lit les données SQL de phpbb-posts
+	// Called during first pass on post data that reads phpbb-posts SQL data
 	function viewtopic_post_rowset_data($vars) {
-		// Mémorise les données SQL du post pour traitement plus loin (viewtopic procède en 2 fois)
-		$post_id = $vars['row']['post_id'];
-		$this->all_post_data [$post_id] = $vars['row'];
+		// Update the database with the automatic data
+		$post_data = $vars['row'];
+
+		// Extraction of the center for all actions
+		preg_match_all ('/([0-9\.]+)/', $post_data['centerwkt'], $center);
+
+		$update = []; // Datas to be updated
+		foreach ($post_data AS $k=>$v)
+			if (!$v)
+				switch ($k) {
+//TODO ALPAGES Automatiser : Année où la fiche de l'alpage a été renseignée ou actualisée
+
+					case 'geo_surface':
+						if ($post_data['area'] && $center[0])
+							$update[$k] =
+								round ($post_data['area']
+									* 1111 // hm par ° delta latitude
+									* 1111 * sin ($center[0][1] * M_PI / 180) // hm par ° delta longitude
+								);
+						break;
+
+					// Calcul de l'altitude avec IGN
+					//TODO CHEM Altitude en dehors de la France
+					case 'geo_altitude':
+						if ($center[0]) {
+							global $geo_keys;
+							$api = "http://wxs.ign.fr/{$geo_keys['IGN']}/alti/rest/elevation.json?lon={$center[0][0]}&lat={$center[0][1]}&zonly=true";
+							preg_match ('/([0-9]+)/', @file_get_contents($api), $altitude);
+							if ($altitude)
+								$update[$k] = $altitude[1];
+						}
+						break;
+
+					case 'geo_commune':
+						//TODO BUG : calcule geo_commune sur un post d'un forum normal
+						//TODO BUG BEST : pas de commune = "~ " (un espace de trop)
+						$nominatim = json_decode (@file_get_contents (
+							"https://nominatim.openstreetmap.org/reverse?format=json&lon={$center[0][0]}&lat={$center[0][1]}",
+							false,
+							stream_context_create (array ('http' => array('header' => "User-Agent: StevesCleverAddressScript 3.7.6\r\n")))
+						));
+						$update[$k] = @$nominatim->address->postcode.' '.@(
+							$nominatim->address->town ?:
+							$nominatim->address->city ?:
+							$nominatim->address->suburb  ?:
+							$nominatim->address->village ?:
+							$nominatim->address->hamlet ?:
+							$nominatim->address->neighbourhood ?:
+							$nominatim->address->quarter
+						);
+						break;
+
+					// Infos refuges.info
+					case 'geo_massif':
+					case 'geo_reserve':
+					case 'geo_ign':
+						if ($center[0]) {
+							$massif = ''; $reserve = ''; $igns = [];
+							$url = "http://www.refuges.info/api/polygones?type_polygon=1,3,12&bbox={$center[0][0]},{$center[0][1]},{$center[0][0]},{$center[0][1]}";
+							$wri_export = @file_get_contents($url);
+							if ($wri_export) {
+								$fs = json_decode($wri_export)->features;
+								foreach($fs AS $f)
+									switch ($f->properties->type->type) {
+										case 'massif':
+											$massif = $f->properties->nom;
+											break;
+										case 'zone réglementée':
+											$reserve = $f->properties->nom;
+											break;
+										case 'carte':
+											$ms = explode(' ', str_replace ('-', ' ', $f->properties->nom));
+											$nom_carte = str_replace ('-', ' ', str_replace (' - ', ' : ', $f->properties->nom));
+											$igns[] = "<a target=\"_BLANK\" href=\"https://ignrando.fr/boutique/catalogsearch/result/?q={$ms[1]}\">$nom_carte</a>";
+									}
+								if (array_key_exists('geo_massif', $post_data))
+									$update['geo_massif'] = $massif;
+								if (array_key_exists('geo_reserve', $post_data))
+									$update['geo_reserve'] = $reserve;
+								if (array_key_exists('geo_ign', $post_data))
+									$update['geo_ign'] = implode ('<br/>', $igns);
+							}
+						}
+				}
+
+		//Stores post SQL data for further processing (viewtopic proceeds in 2 steps)
+		$this->all_post_data[$vars['row']['post_id']] =  array_merge ($post_data, $update);
+
+		// Clean ~ automatic feilds / replace by -field
+		//TODO AFTER CHEM remove when no more ~
+		$af = ['geo_surface', 'geo_altitude', 'geo_commune', 'geo_massif', 'geo_reserve', 'geo_ign', 'geo_contains'];
+		foreach ($af AS $v)
+			if (array_key_exists ($v, $post_data))
+				$automatic_fields [] = $v;
+		$sql = "SELECT post_id,".implode(',', $automatic_fields).
+			" FROM ".POSTS_TABLE.
+			" WHERE ".implode(" LIKE '%~' OR ", $automatic_fields)." LIKE '%~'";
+		$result = $this->db->sql_query($sql);
+		while ($row = $this->db->sql_fetchrow($result))
+			foreach ($row AS $k=>$v)
+				if (substr($v, -1) == '~') {
+					$vr = str_replace("'", "\\'", substr($v, 0, -1));
+					$sql = "UPDATE phpbb_posts SET $k = '-$vr' WHERE post_id = ".$row['post_id'];
+					$this->db->sql_query($sql);
+				}
+		$this->db->sql_freeresult($result);
+
+		// Update de la base
+		if ($update) {
+			// Automatic generated begins by -
+			foreach ($update AS $k=>$v)
+				$update[$k] = '-'.$update[$k];
+
+			$this->db->sql_query (
+				'UPDATE '.POSTS_TABLE.
+				' SET '.$this->db->sql_build_array('UPDATE',$update).
+				' WHERE post_id = '.$post_data['post_id']
+			);
+
+			if(defined('TRACES_DOM') && count($update))
+				echo"<pre style='background-color:white;color:black;font-size:14px;'>AUTOMATIC DATA = ".var_export($update,true).'</pre>';
+		}
 	}
 
 	// Assign template variables for images attachments
@@ -319,8 +445,6 @@ class listener implements EventSubscriberInterface
 
 	// Appelé lors de la deuxième passe sur les données des posts qui prépare dans $post_row les données à afficher sur le post du template
 	function viewtopic_modify_post_row($vars) {
-//TODO DELETE		$this->viewtopic_modify_post_row_2($vars);
-
 		$post_id = $vars['row']['post_id'];
 		$this->template->assign_vars ([
 			'TOPIC_FIRST_POST_ID' => $vars['topic_data']['topic_first_post_id'],
@@ -333,19 +457,14 @@ class listener implements EventSubscriberInterface
 		// Assign the geo values to the template
 		if (isset ($this->all_post_data[$post_id])) {
 			$post_data = $this->all_post_data[$post_id]; // Récupère les données SQL du post
-			$post_row = $vars['post_row'];
 
 			if ($post_data['post_id'] == $vars['topic_data']['topic_first_post_id']) {
-				$this->get_automatic_data($post_data);
-				$this->topic_fields('info', $post_data, $vars['topic_data']['forum_desc'], $vars['topic_data']['forum_name']);
+				$this->topic_fields('specific_fields', $post_data, $vars['topic_data']['forum_desc']);
 
 				// Assign geo_ vars to template for these used out of topic_fields
 				foreach ($post_data AS $k=>$v)
-					if (strstr ($k, 'geo')
-						&& is_string ($v))
-						$this->template->assign_var (strtoupper ($k), str_replace ('~', '', $v));
-
-				$vars['post_row'] = $post_row;
+					if (strstr ($k, 'geo') && is_string ($v))
+						$this->template->assign_var (strtoupper ($k), $v);
 			}
 		}
 	}
@@ -356,25 +475,28 @@ class listener implements EventSubscriberInterface
 	*/
 	function modify_posting_auth($vars) {
 		// Popule le sélecteur de forum
-		preg_match ('/\[view=[a-z]+/i', $vars['post_data']['forum_desc'], $view);
-		$sql = "SELECT forum_id, forum_name, parent_id, forum_type, forum_flags, forum_options, left_id, right_id, forum_desc
-			FROM ".FORUMS_TABLE."
-			WHERE forum_desc LIKE '%{$view[0]}%'
-			ORDER BY left_id ASC";
-		$result = $this->db->sql_query($sql);
-		while ($row = $this->db->sql_fetchrow($result))
-			$forum_list [] = '<option value="' . $row['forum_id'] . '"' .($row['forum_id'] == $vars['forum_id'] ? ' selected="selected"' : ''). '>' . $row['forum_name'] . '</option>';
-		$this->db->sql_freeresult($result);
-		if (isset ($forum_list))
-			$this->template->assign_var ('S_FORUM_SELECT', implode ('', $forum_list));
+return;		//TODO CHEM OBSOLETE ????? Voir dans chem !
+		preg_match ('/\view=[a-z]+/i', $vars['post_data']['forum_desc'], $view);
+		if (count ($view)) {
+			$sql = "SELECT forum_id, forum_name, parent_id, forum_type, forum_flags, forum_options, left_id, right_id, forum_desc
+				FROM ".FORUMS_TABLE."
+				WHERE forum_desc LIKE '%{$view[0]}%'
+				ORDER BY left_id ASC";
+			$result = $this->db->sql_query($sql);
+			while ($row = $this->db->sql_fetchrow($result))
+				$forum_list[] = '<option value="' . $row['forum_id'] . '"' .($row['forum_id'] == $vars['forum_id'] ? ' selected="selected"' : ''). '>' . $row['forum_name'] . '</option>';
+			$this->db->sql_freeresult($result);
+			if (isset ($forum_list))
+				$this->template->assign_var ('S_FORUM_SELECT', implode ('', $forum_list));
 
-		// Assigne le nouveau forum pour la création
-		$vars['forum_id'] = request_var('to_forum_id', $vars['forum_id']);
+			// Assign the new forum for creation
+			$vars['forum_id'] = request_var('to_forum_id', $vars['forum_id']);
 
-		// Le bouge
-		if ($vars['mode'] == 'edit' && // S'il existe déjà !
-			$vars['forum_id'] != $vars['forum_id'])
-			move_topics([$vars['post_id']], $vars['forum_id']);
+			// Move it
+			if ($vars['mode'] == 'edit' && // S'il existe déjà !
+				$vars['forum_id'] != $vars['forum_id'])
+				move_topics([$vars['post_id']], $vars['forum_id']);
+		}
 	}
 
 	// Appelé au début pour ajouter des parametres de recherche sql
@@ -386,10 +508,10 @@ class listener implements EventSubscriberInterface
 		$row = $this->db->sql_fetchrow ($result);
 		$this->db->sql_freeresult ($result);
 		if ($row) // Force le forum
-			$vars['forum_id'] = $row ['forum_id'];
+			$vars['forum_id'] = $row['forum_id'];
 	}
 
-	// Permet la saisie d'un POST avec un texte vide
+	// Allows entering a POST with empty text
 	function posting_modify_submission_errors($vars) {
 		$error = $vars['error'];
 
@@ -405,7 +527,7 @@ class listener implements EventSubscriberInterface
 		$page_data = $vars['page_data'];
 		$post_data = $vars['post_data'];
 
-		// Récupère la traduction des données spaciales SQL
+		// Get translation of SQL space data
 		if (isset ($post_data['geom'])) {
 			$sql = 'SELECT ST_AsGeoJSON(geom) AS geojson'.
 				' FROM '.POSTS_TABLE.
@@ -418,7 +540,7 @@ class listener implements EventSubscriberInterface
 
 		// Unhide geojson field
 		$this->request->enable_super_globals();
-		$page_data['GEOJSON_TYPE'] = $_GET['role'] == 'dev' ? 'text' : 'hidden';
+		$page_data['GEOJSON_TYPE'] = isset($_GET['geom']) ? 'text' : 'hidden';
 		$this->request->disable_super_globals();
 
 		// Create a log file with the existing data if there is none
@@ -429,21 +551,12 @@ class listener implements EventSubscriberInterface
 			$page_data['DRAFT_SUBJECT'] = $this->post_name ?: 'Nom';
 
 		$page_data['EDIT_REASON'] = 'Modération'; // For display in news
-		$page_data['TOPIC_ID'] = $post_data['topic_id'] ?: 0;
-		$page_data['POST_ID'] = $post_data['post_id'] ?: 0;
+		$page_data['TOPIC_ID'] = @$post_data['topic_id'];
+		$page_data['POST_ID'] = @$post_data['post_id'];
 		$page_data['TOPIC_FIRST_POST_ID'] = $post_data['topic_first_post_id'] ?: 0;
 
-		// Assign the phpbb-posts SQL data to the template
-		/*//TODO DELETE
-		foreach ($post_data AS $k=>$v)
-			if (!strncmp ($k, 'geo', 3)
-				&& is_string ($v))
-				$page_data[strtoupper ($k)] =
-					strstr($v, '~') == '~' ? null : $v; // Clears fields ending with ~ for automatic recalculation
-					*/
-
-		$this->topic_fields('info', $post_data, $post_data['forum_desc'], $post_data['forum_name'], true);
-		$this->geobb_activate_map($post_data['forum_desc'], $post_data['post_id'] == $post_data['topic_first_post_id']);
+		$this->topic_fields('specific_fields', $post_data, $post_data['forum_desc'], true);
+		$this->geobb_activate_map($post_data['forum_desc'], @$post_data['post_id'] == $post_data['topic_first_post_id']);
 
 		// HORRIBLE phpbb hack to accept geom values //TODO-ARCHI : check if done by PhpBB (supposed 3.2)
 		$file_name = "phpbb/db/driver/driver.php";
@@ -460,37 +573,17 @@ class listener implements EventSubscriberInterface
 	function submit_post_modify_sql_data($vars) {
 		$sql_data = $vars['sql_data'];
 
-		// Get special columns list
-		$special_columns = [];
-		$sql = 'SHOW columns FROM '.POSTS_TABLE.' LIKE "geo%"';
-		$result = $this->db->sql_query($sql);
-		while ($row = $this->db->sql_fetchrow($result))
-			$special_columns [] = $row['Field'];
-		$this->db->sql_freeresult($result);
-
 		// Treat specific data
 		$this->request->enable_super_globals(); // Allow access to $_POST & $_SERVER
 		foreach ($_POST AS $k=>$v)
 			if (!strncmp ($k, 'geo', 3)) {
-				// <Input name="..."> : <sql colomn name>-<sql colomn type>-[<sql colomn size>]
-				$ks = explode ('-', $k);
-
-				// Create or modify the SQL column
-				if (count ($ks) == 3)
-					$ks[2] = '('.$ks[2].')';
-				$this->db->sql_query(
-					'ALTER TABLE '.POSTS_TABLE.
-					(in_array ($ks[0], $special_columns) ? ' CHANGE '.$ks[0].' ' : ' ADD ').
-					implode (' ', $ks)
-				);
-
 				// Retrieves the values of the geometry, includes them in the phpbb_posts table
-				if ($ks[1] == 'geometry' && $v)
+				if ($k == 'geom' && $v)
 					$v = "ST_GeomFromGeoJSON('$v')";
 					//TODO TEST est-ce qu'il optimise les linestring en multilinestring (ne devrait pas)
 
 				// Retrieves the values of the questionnaire, includes them in the phpbb_posts table
-				$sql_data[POSTS_TABLE]['sql'][$ks[0]] = utf8_normalize_nfc($v) ?: null; // null allows the deletion of the field
+				$sql_data[POSTS_TABLE]['sql'][$k] = utf8_normalize_nfc($v) ?: null; // null allows the deletion of the field
 			}
 		$this->request->disable_super_globals();
 
@@ -506,33 +599,37 @@ class listener implements EventSubscriberInterface
 
 	// Save changes
 	function save_post_data($post_data, $attachment_data, $geo_data, $create_if_null = false) {
-		$this->request->enable_super_globals();
-		$to_save = [
-			$this->user->data['username'].' '.date('r').' '.$_SERVER['REMOTE_ADDR'],
-			$_SERVER['REQUEST_URI'],
-			'forum '.$post_data['forum_id'].' = '.$post_data['forum_name'],
-			'topic '.$post_data['topic_id'].' = '.$post_data['topic_title'],
-			'post_subject = '.$post_data['post_subject'],
-			'post_text = '.$post_data['post_text'],
-			'geojson = '.$geo_data['geojson'],
-		];
-		foreach ($geo_data AS $k=>$v)
-			if ($v && !strncmp ($k, 'geo_', 4))
-				$to_save [] = "$k = $v";
+		if (isset ($post_data['post_id'])) {
+			$this->request->enable_super_globals();
+			$to_save = [
+				$this->user->data['username'].' '.date('r').' '.$_SERVER['REMOTE_ADDR'],
+				$_SERVER['REQUEST_URI'],
+				'forum '.$post_data['forum_id'].' = '.$post_data['forum_name'],
+				'topic '.$post_data['topic_id'].' = '.$post_data['topic_title'],
+				'post_subject = '.$geo_data['post_subject'],
+				'post_text = '.$post_data['post_text'].$post_data['message'],
+				'geojson = '.@$geo_data['geojson'],
+			];
+			foreach ($geo_data AS $k=>$v)
+				if ($v && !strncmp ($k, 'geo_', 4))
+					$to_save [] = "$k = $v";
 
-		// Save attachment_data
-		$attach = [];
-		if ($attachment_data)
-			foreach ($attachment_data AS $att)
-				$attach[] = $att['attach_id'].' : '.$att['real_filename'];
-		if (isset ($attach))
-			$to_save[] = 'attachments = '.implode (', ', $attach);
+			// Save attachment_data
+			$attach = [];
+			if ($attachment_data)
+				foreach ($attachment_data AS $att)
+					$attach[] = $att['attach_id'].' : '.$att['real_filename'];
+			if (isset ($attach))
+				$to_save[] = 'attachments = '.implode (', ', $attach);
 
-		$file_name = 'LOG/'.$post_data['post_id'].'.txt';
-		if (!$create_if_null || !file_exists($file_name))
-			file_put_contents ($file_name, implode ("\n", $to_save)."\n\n", FILE_APPEND);
+			//TODO protéger l'accès à ces fichiers
+			//TODO sav avec les balises !
+			$file_name = 'LOG/'.$post_data['post_id'].'.txt';
+			if (!$create_if_null || !file_exists($file_name))
+				file_put_contents ($file_name, implode ("\n", $to_save)."\n\n", FILE_APPEND);
 
-		$this->request->disable_super_globals();
+			$this->request->disable_super_globals();
+		}
 	}
 
 
@@ -542,15 +639,20 @@ class listener implements EventSubscriberInterface
 	function geobb_activate_map($forum_desc, $first_post = true) {
 		global $geo_keys; // Private / defined in config.php
 
-		preg_match ('/\[(first|all)=([a-z]+)(\:|\])/i', html_entity_decode ($forum_desc), $regle);
 		preg_match ('/\[view=([a-z]+)(\:|\])/i', html_entity_decode ($forum_desc), $view);
+		// Misc template values
+		$this->template->assign_vars([
+			'BODY_CLASS' => @$view[1],
+//TODO DELETE	STYLE_NAME' => $this->user->style['style_name'],
+		]);
+
+		preg_match ('/\[(first|all)=([a-z]+)(\:|\])/i', html_entity_decode ($forum_desc), $regle);
 		switch (@$regle[1]) {
-			case 'first': // Régle sur le premier post seulement
+			case 'first': // Rule for the first post only
 				if (!$first_post)
 					break;
 
-			case 'all': // Régle sur tous les posts
-				$ns = explode ('\\', __NAMESPACE__);
+			case 'all': // Rule for all posts
 				$this->template->assign_vars([
 					'GEO_MAP_TYPE' => str_replace(
 						['point','ligne','line','surface',],
@@ -560,417 +662,237 @@ class listener implements EventSubscriberInterface
 				]);
 				if ($geo_keys)
 					$this->template->assign_vars (array_change_key_case ($geo_keys, CASE_UPPER));
-				default:
-				$this->template->assign_vars([
-					'META_ROBOTS' => defined('META_ROBOTS') ? META_ROBOTS : '',
-					'BODY_CLASS' => @$view[1],
-					'EXT_DIR' => 'ext/'.$ns[0].'/'.$ns[1].'/', // Répertoire de l'extension
-//TODO DELETE					'STYLE_NAME' => $this->user->style['style_name'],
-				]);
 		}
-	}
-
-	// Calcul des données automatiques
-	//TODO Automatiser : Année où la fiche de l'alpage a été renseignée ou actualisée
-	function get_automatic_data(&$row) {
-		if (!$row['geojson'])
-			return;
-
-		// Calculation of the center for all actions
-		preg_match_all ('/([0-9\.]+)/', $row['centerwkt'], $center);
-		$row['center'] = $center[0];
-
-		$update = []; // Datas to be updated
-
-		// Dans quel alpage est contenu (lors de la première init)
-		if (array_key_exists ('geo_contains', $row) &&
-			(!$row['geo_contains'] || $row['geo_contains'] == 'null')) {
-			// Search points included in a surface
-			$sql = "
-				SELECT polygon.topic_id
-				FROM	 ".POSTS_TABLE." AS polygon
-					JOIN ".POSTS_TABLE." AS point ON (point.topic_id = {$row['topic_id']})
-				WHERE
-					ST_Contains (polygon.geom, point.geom)
-					AND ST_Dimension(polygon.geom) > 0
-					LIMIT 1
-				";
-			$result = $this->db->sql_query($sql);
-			if ($row_contain = $this->db->sql_fetchrow($result))
-				$update['geo_contains'] = $row_contain['topic_id'];
-			$this->db->sql_freeresult($result);
-		}
-
-		// Calcul de la surface en ha
-		if (array_key_exists ('geo_surface', $row) &&
-			!$row['geo_surface'] &&
-			$row['area'] && $row['center']
-		) {
-			$update['geo_surface'] =
-				round ($row['area']
-					* 1111 // hm par ° delta latitude
-					* 1111 * sin ($row['center'][1] * M_PI / 180) // hm par ° delta longitude
-				);
-		}
-
-		// Calcul de l'altitude avec IGN
-		if (array_key_exists ('geo_altitude', $row) &&
-			!$row['geo_altitude'] &&
-			$row['center']
-		) {
-			global $geo_keys;
-			$api = "http://wxs.ign.fr/{$geo_keys['IGN']}/alti/rest/elevation.json?lon={$row['center'][0]}&lat={$row['center'][1]}&zonly=true";
-			preg_match ('/([0-9]+)/', @file_get_contents($api), $altitude);
-			if ($altitude)
-				$update['geo_altitude'] = $altitude[1];
-		}
-
-		// Infos refuges.info
-		if ((array_key_exists('geo_massif', $row) && !$row['geo_massif'] && $row['center']) ||
-			(array_key_exists('geo_reserve', $row) && !$row['geo_reserve'] && $row['center']) ||
-			(array_key_exists('geo_ign', $row) && !$row['geo_ign'] && $row['center'])) {
-			$update['geo_massif'] = null;
-			$update['geo_reserve'] = null;
-			$igns = [];
-			$url = "http://www.refuges.info/api/polygones?type_polygon=1,3,12&bbox={$row['center'][0]},{$row['center'][1]},{$row['center'][0]},{$row['center'][1]}";
-			$wri_export = @file_get_contents($url);
-			if ($wri_export) {
-				$fs = json_decode($wri_export)->features;
-				foreach($fs AS $f)
-					switch ($f->properties->type->type) {
-						case 'massif':
-							if (array_key_exists('geo_massif', $row))
-								$update['geo_massif'] = $f->properties->nom;
-							break;
-						case 'zone réglementée':
-							if (array_key_exists('geo_reserve', $row))
-								$update['geo_reserve'] = $f->properties->nom;
-							break;
-						case 'carte':
-							$ms = explode(' ', str_replace ('-', ' ', $f->properties->nom));
-							$nom_carte = str_replace ('-', ' ', str_replace (' - ', ' : ', $f->properties->nom));
-							$igns[] = "<a target=\"_BLANK\" href=\"https://ignrando.fr/boutique/catalogsearch/result/?q={$ms[1]}\">$nom_carte</a>";
-							break;
-					}
-			}
-			$update['geo_ign'] = implode ('<br/>', $igns);
-		}
-
-		// Calcul de la commune (France)
-		if (array_key_exists ('geo_commune', $row) && !$row['geo_commune']) {
-{/*//TODO-CHEM DELETE ???			$ch = curl_init ();
-			curl_setopt ($ch, CURLOPT_URL,
-				'http://wxs.ign.fr/d27mzh49fzoki1v3aorusg6y/geoportail/ols?'.
-				http_build_query ( array(
-					'output' => 'json',
-					'xls' =>
-<<<XML
-<?xml version="1.0" encoding="UTF-8"?>
-<XLS
-	xmlns:xls="http://www.opengis.net/xls"
-	xmlns:gml="http://www.opengis.net/gml"
-	xmlns="http://www.opengis.net/xls"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.2"	xsi:schemaLocation="http://www.opengis.net/xls
-	http://schemas.opengis.net/ols/1.2/olsAll.xsd">
-	<RequestHeader/>
-	<Request requestID="" version="1.2" methodName="LocationUtilityService" maximumResponses="10">
-		<ReverseGeocodeRequest>
-			<Position>
-				<gml:Point>
-					<gml:pos>{$row['center'][1]} {$row['center'][0]}</gml:pos>
-				</gml:Point>
-			</Position>
-			<ReverseGeocodePreference>CadastralParcel</ReverseGeocodePreference>
-		</ReverseGeocodeRequest>
-	</Request>
-</XLS>
-XML
-				))
-			);
-			ob_start();
-			curl_exec($ch);
-			$json = ob_get_clean();
-			preg_match ('/Municipality\\\">([^<]+)/', $json, $commune);
-
-			if ($commune[1]) {
-				curl_setopt ($ch, CURLOPT_URL,
-					'http://wxs.ign.fr/d27mzh49fzoki1v3aorusg6y/geoportail/ols?'.
-					http_build_query ( array(
-						'output' => 'json',
-						'xls' =>
-<<<XML
-<?xml version="1.0" encoding="UTF-8"?>
-<xls:XLS version="1.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xls="http://www.opengis.net/xls" xmlns:gml="http://www.opengis.net/gml" xsi:schemaLocation="http://www.opengis.net/xls http://schemas.opengis.net/ols/1.2/olsAll.xsd">
-    <xls:RequestHeader srsName="EPSG:4326" />
-    <xls:Request maximumResponses="25" methodName="GeocodeRequest" requestID="282b6805-48af-4e8f-83dc-3c55b2d311b0" version="1.2">
-        <xls:GeocodeRequest returnFreeForm="false">
-            <xls:Address countryCode="StreetAddress">
-		<xls:freeFormAddress>{$commune[1]}</xls:freeFormAddress>
-            </xls:Address>
-        </xls:GeocodeRequest>
-    </xls:Request>
-</xls:XLS>
-XML
-					))
-				);
-				ob_start();
-				curl_exec($ch);
-				$json = ob_get_clean();
-				preg_match ('/PostalCode>([^<]+)/', $json, $postalcode);
-
-				if ($postalcode[1])
-					$update['geo_commune'] = $postalcode[1].' '.$commune[1];
-			}
-			if (!$update['geo_commune']) {*/
-				$nominatim = json_decode (@file_get_contents (
-					"https://nominatim.openstreetmap.org/reverse?format=json&lon={$row['center'][0]}&lat={$row['center'][1]}",
-					false,
-					stream_context_create (array ('http' => array('header' => "User-Agent: StevesCleverAddressScript 3.7.6\r\n")))
-				));
-				$update['geo_commune'] = $nominatim->address->postcode.' '.(
-					$nominatim->address->town ?:
-					$nominatim->address->city ?:
-					$nominatim->address->suburb  ?:
-					$nominatim->address->village ?:
-					$nominatim->address->hamlet ?:
-					$nominatim->address->neighbourhood ?:
-					$nominatim->address->quarter 
-				);
-			}
-		}
-
-		// Update de la base
-		foreach ($update AS $k=>$v)
-			if (!$row[$k] &&
-				array_key_exists($k, $row))
-				$update[$k] .= '~';
-			else
-				unset ($update[$k]);
-		// Pour affichage
-		$row = array_merge ($row, $update);
-
-		if ($update)
-			$this->db->sql_query (
-				'UPDATE '.POSTS_TABLE.
-				' SET '.$this->db->sql_build_array('UPDATE',$update).
-				' WHERE post_id = '.$row['post_id']
-		);
-
-		if(defined('TRACES_DOM') && count($update))
-			echo"<pre style='background-color:white;color:black;font-size:14px;'>AUTOMATIC DATA = ".var_export($update,true).'</pre>';
 	}
 
 	// Form management
-	function topic_fields ($block_name, $post_data, $forum_desc, $forum_name, $posting = false) {
-		// Get form fields from the relative post
-		preg_match ('/\[form=([^\]]+)(\:|\])/i', $forum_desc, $form); // Try in forum_desc = [form=Post title][/form]
-		$sql = "
-			SELECT post_text FROM ".POSTS_TABLE."
-			WHERE post_subject = '".str_replace ("'", "\'", $form ? $form[1] : $forum_name)."'
-			ORDER BY post_id
-		";
+	function topic_fields($block_name, $post_data, $forum_desc, $posting = false) {
+		// Get special columns list
+		$sql = 'SHOW columns FROM '.POSTS_TABLE.' LIKE "geo%"';
 		$result = $this->db->sql_query($sql);
-		$row = $this->db->sql_fetchrow($result);
+		while ($row = $this->db->sql_fetchrow($result))
+			$special_columns[$row['Field']] = $row['Type'];
 		$this->db->sql_freeresult($result);
-		if (!$row) // No form then !
-			return;
 
-		$def_forms = explode ("\n", $row['post_text']);
-		foreach ($def_forms AS $kdf=>$df) {
-			$dfs = explode ('|', preg_replace ('/[[:cntrl:]]|<[^>]+>/', '', $df.'|||||'));
-			$block_vars = $attaches = [];
-			$sql_id = 'geo_'.$dfs[0];
+		// Get form fields from the relative post (one post with the title === form=title or the same title than the post discribing the specific fieds)
+		preg_match ('/form=([^\&\>\]]+)/u', str_replace('"', '', html_entity_decode($forum_desc)), $form);
+		$def_forms = $this->get_post_data($form[1]);
 
-			// Clears fields ending with ~ for automatic recalculation
-			if($posting &&
-				strstr($post_data[$sql_id], '~') == '~')
-				$post_data[$sql_id] = '';
-			else
-				$post_data[$sql_id] = str_replace ('~', '', $post_data[$sql_id]);
+		foreach ($def_forms AS $k=>$line) { // Get form definition lines
+			$field = explode ('|', preg_replace ('/[[:cntrl:]]|<br>/', '', $line.'|||||')); // Get form definition fields
+			$title = explode (' ', $field[1], 2); // Extract the title number if any
+			$sql_type = 'varchar(255)';
+			$block[$k] = [ // Init default field template block
+				'FIELD_TAG' => 'p',
+				'FIELD_TITLE' => $field[1],
+				'FIELD_TYPE' => $field[2],
+				'PLACEHOLDER' => $field[3], // Displayed on empty fields
+				'POSTAMBULE' => $field[4], // Displayed after the value
+				'COMMENT' => $field[5],
+					// Displayed on posting
+					// confidentiel (not displayed on viewtopic if not moderator)
+					// automatique (not displayed on posting)
+			];
 
-			// Default tags
-			$block_vars['TAG1'] = 'p';
-			$block_vars['INNER'] = $dfs[1];
-			$block_vars['TYPE'] = $dfs[2];
-			$block_vars['SQL_TYPE'] = 'text';
-			$block_vars['DISPLAY_VALUE'] =
-			$block_vars['VALUE'] = $post_data[$sql_id];
-			$options = explode (',', ','.$dfs[2]); // One empty at the beginning
-			$block_vars['PLACEHOLDER'] = str_replace('"', "''", $dfs[3]);
-			$block_vars['POSTAMBULE'] = $dfs[4] .($posting ? ' '.$dfs[5] : '');
-
-			// {|1.1 Title
-			// {|Text
-			if ($dfs[0] == '{' || !$dfs[0]) {
-				$dfs1s = explode (' ', $dfs[1]);
-
-				// Title tag <h2>..<h4>
-				preg_match_all ('/[0-9]+/', $dfs1s[0], $title);
-				$block_vars['TAG1'] = 'h'.(count($title[0]) ? count($title[0]) + 1 : 4);
-
-				// Block visibility
-				$ndf = implode (' geo_', array_slice ($def_forms, $kdf)); // Find the block beginning
-				$c = $n = 1;
-				$ndfl = strlen ($ndf);
-				while ($n && $c < $ndfl) // Find the block end
-					switch ($ndf[$c++]) {
-						case '{': $n++; break;
-						case '}': $n--;
-					}
-				// Check if any value there
-				preg_match_all ('/(geo_[a-z_0-9]+)\|[^\|]+\|([a-z]+)/', substr ($ndf, 0, $c), $name);
-				foreach ($name[1] AS $k=>$m)
-					if (isset ($post_data[$m]) &&
-						($name[2][$k] != 'confidentiel' || $this->user->data['is_registered']))
-						$block_vars['DISPLAY'] = true; // Decide to display the title
+			// Numbered title
+			if (preg_match ('/[0-9]+\./', $title[0])) {
+				preg_match_all ('/[0-9]+\.?/', $title[0], $title_num);
+				$block[$k]['FIELD_TITLE_NUM'] = $title[0];
+				$block[$k]['FIELD_TAG'] = 'h'.(count ($title_num[0]) + 1);
 			}
 
-			// End of block(s)
-			elseif ($dfs[0][0] == '}')
-				;
-
-			// sql_id incorrect
-			else if ($dfs[0] && !preg_match ('/^[a-z_0-8]+$/', $dfs[0])) {
-				$block_vars['TAG1'] = 'p style="color:red"';
-				$block_vars['INNER'] = 'Identifiant incorrect : "'.$dfs[0].'"';
-			}
-			elseif ($dfs[0]) {
-				$options = explode (',', ','.$dfs[2]); // With a first line empty
+			// SQL field
+			if (preg_match ('/^([a-z0-9_]+)$/', $field[0])) {
+				$block[$k]['TAG'] = 'input';
+				$block[$k]['NAME'] = $sql_id = 'geo_'.$field[0];
+				$sql_data = $posting && $post_data[$sql_id][0] == '-' //TODO BEST only do that if automatic data
+					? '' // Don't edit automatic values
+					: trim ($post_data[$sql_id], '-~ \t\n\r\0\x0B'); // Also remove - before automatic data //TODO AFRET CHEM remove ~ when no more databases with ~
+				$sql_data = str_replace (['<a ','</a>'], ['<pre><a ','</a></pre>'], $sql_data);
+				$block[$k]['VALUE'] = $sql_data;
 
 				// sql_id|titre|choix,choix|invite|postambule|commentaire saisie
+				$options = explode (',', ','.$field[2]); // Add a first option empty
 				if (count($options) > 2) {
+					$block[$k]['TAG'] = 'select';
+					foreach ($options AS $o)
+						$block[$k]['INNER'] .=
+							"<option value=\"$o\"".
+							($sql_data == $o ? ' selected="selected"' : '').
+							">$o</option>\n";
+					// Verify SQL type
 					$length = 0;
 					foreach ($options AS $o)
 						$length = max ($length, strlen ($o) + 1);
-					$block_vars['TAG'] = 'select';
-					$block_vars['SQL_TYPE'] = 'text';
-					$block_vars['SQL_TYPE'] = 'varchar-'.$length;
+					$sql_type = "varchar($length)";
 				}
 
-				// sql_id|titre|proches||postambule|commentaire saisie
-				elseif (!strcasecmp ($dfs[2], 'proches')) {
-					if ($post_data['post_id']) {
-						$block_vars['TAG'] = 'select';
+				// sql_id|titre|type|invite|postambule|commentaire
+				else switch ($field[2]) {
+					case 'liste':
+						$rows = $this->get_post_data($field[3], "\n");
+						$block[$k]['TAG'] = 'select';
+						$block[$k]['POSTAMBULE'] = '';
+						foreach ($rows AS $r) {
+							$rowss = explode (' ', $r, 2);
+							$block[$k]['INNER'] .=
+								"<option value=\"{$rowss[0]}\"".
+								($sql_data == $rowss[0] ? ' selected="selected"' : '').
+								">{$rowss[0]}</option>\n";
+							if ($sql_data == $rowss[0])
+								$block[$k]['POSTAMBULE'] = '<br/>'.$field[4].': '.$rowss[1];
+						}
+						break;
 
-						// Search surfaces closest to a point
-						preg_match_all ('/([0-9\.]+)/', $post_data['geojson'], $point);
-						if(count($point[0])) {
-							$km = 3; // Search maximum distance
-							$bbox = ($point[0][0]-.0127*$km).' '.($point[0][1]-.009*$km).",".($point[0][0]+.0127*$km).' '.($point[0][1]+.009*$km);
-							$sql = "
-								SELECT post_subject, topic_id, ST_AsText(ST_Centroid(ST_Envelope(geom))) AS center
-								FROM ".POSTS_TABLE."
-								WHERE ST_Dimension(geom) > 0 AND
-									MBRIntersects(geom, ST_GeomFromText('LINESTRING($bbox)',4326))
-								";
-							$result = $this->db->sql_query($sql);
-							$options = ['d0' => []]; // First line empty
-							while ($row = $this->db->sql_fetchrow($result)) {
-								preg_match_all ('/([0-9\.]+)/', $row['center'], $row['center']);
-								$dist2 = 1 + pow ($row['center'][0][0] - $point[0][0], 2) + pow ($row['center'][0][1] - $point[0][1], 2) * 2;
-								$options['d'.$dist2] = $row;
-								if ($row['topic_id'] == $block_vars['VALUE']) {
-									$block_vars['VALUE'] = // For posting.pgp initial select
-									$block_vars['DISPLAY_VALUE'] = // For viewtopic.php display
-										$row['post_subject'];
-									$block_vars['HREF'] = 'viewtopic.php?t='.$row['topic_id'];
-								}
+					case 'proches':
+						if ($posting) {
+							// Posting : Search surfaces closest to a point
+							if ($post_data['post_id']) {
+								$sql = "SELECT s.topic_id, t.topic_title,
+										ST_Distance(s.geom,p.geom) AS distance
+										FROM ".POSTS_TABLE." AS s
+											JOIN ".POSTS_TABLE." AS p ON (p.post_id = {$post_data['post_id']})
+											JOIN ".TOPICS_TABLE." AS t ON (t.topic_id = s.topic_id)
+										WHERE ST_Area(s.geom) > 0 AND
+											ST_Distance(s.geom,p.geom) < 0.1
+										ORDER BY distance ASC
+										LIMIT 10";
+								$result = $this->db->sql_query($sql);
+								$block[$k]['INNER'] = '<option'.($sql_data?'':' selected="selected"').'></option>';
+								while ($row = $this->db->sql_fetchrow($result))
+									$block[$k]['INNER'] .=
+										'<option value="'.$row['topic_id'].'"'.
+										($row['topic_id'] == $sql_data ? ' selected="selected"' : '').'>'.
+										$row['topic_title'].
+										'</option>';
+								$this->db->sql_freeresult($result);
+
+								$block[$k]['TAG'] = 'select';
+								$block[$k]['STYLE'] = 'display:none'; // Hide at posting //TODO TEST sert à quoi ?
+							} else {
+								$block[$k]['TAG'] = 'span';
+								$block[$k]['COMMENT'] = '(enregistrez ce point pour accéder à la fonction)';
 							}
-							ksort ($options); //TODO BEST trier en fonction du bord le plus prés / pas du center
+						}
+
+						// Viewtopic : Get the contains name & url
+						elseif ($sql_data) {
+							$sql = 'SELECT topic_id,topic_title FROM '.TOPICS_TABLE.' WHERE topic_id = '.$sql_data;
+							$result = $this->db->sql_query($sql);
+							$row = $this->db->sql_fetchrow($result);
 							$this->db->sql_freeresult($result);
-						} else
-							$block_vars['STYLE'] = 'display:none'; // Hide at posting
-					} else
-						$block_vars['STYLE'] = 'display:none'; // Hide at posting
-				}
+							$block[$k]['VALUE'] = '<a href="viewtopic.php?t='.$row['topic_id'].'">'.$row['topic_title'].'</a>';
+						}
+//TODO BEST (mais pb base ALPAGES)						$sql_type = 'int(10)'; // === topic_id
+						break;
 
-				// sql_id|titre|attaches||postambule|commentaire saisie
-				//TODO-BEST-ASPIR faire effacer le bloc {} quand il n'y a pas d'attaches
-				elseif (!strcasecmp ($dfs[2], 'attaches')) {
-					$block_vars['TAG'] = 'input';
-					$block_vars['TYPE'] = 'hidden';
+					// List topics attached to this one
+					//TODO BUG ASPIR : reste les titres couverture réseau, points d'eau, logement de fonction
+					case 'attaches':
+						$block[$k]['VALUE'] = '';
+						if ($post_data['topic_id']) {
+							$sql = "SELECT * FROM ".POSTS_TABLE."
+										JOIN ".FORUMS_TABLE." USING (forum_id)"./* Just to sort forum_image related */"
+									WHERE forum_image LIKE '%/{$field[3]}.%' AND
+										$sql_id LIKE '{$post_data['topic_id']}%'";
+							$result = $this->db->sql_query($sql);
+							while ($row = $this->db->sql_fetchrow($result))
+								$attachments[$k][] = $row;
+							$this->db->sql_freeresult($result);
+						}
 
-					if (array_key_exists ($sql_id, $post_data)) {
-						$sql = "
-							SELECT *
-							FROM ".POSTS_TABLE."
-								JOIN ".FORUMS_TABLE." USING (forum_id)
-							WHERE forum_image LIKE '%{$dfs[3]}.png' AND
-								($sql_id = '{$post_data['topic_id']}' OR
-								 $sql_id = '{$post_data['topic_id']}~')
-							";
+						$sql = 'SELECT forum_name,forum_id FROM '.FORUMS_TABLE.' WHERE forum_image LIKE "%'.$field[3].'%"';
 						$result = $this->db->sql_query($sql);
-						while ($row = $this->db->sql_fetchrow($result))
-							$attaches[] = $row;
-
+						$row = $this->db->sql_fetchrow($result);
 						$this->db->sql_freeresult($result);
-						if (!count ($attaches))
-							$block_vars['ATT_STYLE_TAG1'] = ' style="display:none"';
-					}
+
+						//TODO BEST ARCHI put in an alpage template
+						$block[$k]['COMMENT'] = 'Pour ajouter un '.strtolower($row['forum_name']).
+							', ';
+						$block[$k]['COMMENT'] .= $post_data['post_id']
+							? 'choisissez ou créez le <a target="_BLANK" href="viewforum.php?&f='.$row['forum_id'].
+							'">ICI</a> et modifiez le champ "Alpage d’appartenance"'
+							: 'enregistrez d\'abord cet alpage.';
+
+						$block[$k]['TYPE'] = 'hidden'; // Hides the input field
+						$sql_type = 'int(10)'; // topic_id
+						break;
+
+					case 'long':
+						$block[$k]['TAG'] = 'textarea';
+						$block[$k]['INNER'] = $sql_data;
+						$sql_type = 'text';
+						break;
+					case 'date':
+						$block[$k]['TYPE'] = 'date';
+						$sql_type = 'date';
+						break;
+					case '0':
+						$block[$k]['TYPE'] = 'number';
+						$sql_type = 'int(5)';
+						break;
+					default:
+						$block[$k]['SIZE'] = '40';
+						$block[$k]['CLASS'] = 'inputbox autowidth';
 				}
 
-				// sql_id|titre|automatique||postambule
-				elseif (!strcasecmp ($dfs[2], 'automatique')) {
-					$block_vars['TAG'] = 'input';
-					$block_vars['STYLE'] = 'display:none'; // Hide at posting
-					$block_vars['TYPE'] = 'hidden';
-					$block_vars['VALUE'] = null; // Set the value to null to ask for recalculation
-				}
+				// Correct SQL table structure
+				if ($sql_type != $special_columns[$sql_id]) {
+					// Change the table structure
+					$sql = 'ALTER TABLE '.POSTS_TABLE.
+						(array_key_exists ($sql_id, $special_columns) ? ' CHANGE '.$sql_id.' ' : ' ADD ').
+						$sql_id.' '.$sql_type;
+					$this->db->sql_query($sql);
 
-				// sql_id|titre|0||postambule|commentaire saisie
-				elseif (is_numeric ($dfs[2])) {
-					$block_vars['TAG'] = 'input';
-					$block_vars['TYPE'] = 'number';
-					$block_vars['SQL_TYPE'] = 'int-5';
-				}
-
-				// sql_id|titre|date||postambule|commentaire saisie
-				elseif (!strcasecmp ($dfs[2], 'date')) {
-					$block_vars['TAG'] = 'input';
-					$block_vars['TYPE'] = 'date';
-					$block_vars['SQL_TYPE'] = 'date';
-				}
-
-				// sql_id|titre|long|invite|invite|postambule|commentaire saisie
-				elseif (!strcasecmp ($dfs[2], 'long')) {
-					$block_vars['TAG'] = 'textarea';
-				}
-
-				// sql_id|titre|confidentiel|invite|invite|postambule|commentaire saisie
-				// sql_id|titre|court|invite|invite|postambule|commentaire saisie
-				else {
-					$block_vars['TAG'] = 'input';
-					$block_vars['SIZE'] = '40';
-					$block_vars['CLASS'] = 'inputbox autowidth';
-					if ($dfs[2] == 'confidentiel' && !$this->user->data['is_registered'])
-						$block_vars['DISPLAY_VALUE'] = null;
-				}
-			} //TODO-ARCHI DELETE pourquoi as-t-on besoin du test précédent ?
-
-			$block_vars['NAME'] = $sql_id.'-'.$block_vars['SQL_TYPE'];
-
-			$vs = $block_vars;
-			foreach ($vs AS $k=>$v)
-				if ($v)
-					$block_vars['ATT_'.$k] = ' '.strtolower($k).'="'.str_replace('"','\\\"', $v).'"';
-
-			$this->template->assign_block_vars($block_name, $block_vars);
-
-			if (count($options) &&
-				count (explode ('.', $block_name)) == 1) {
-				foreach ($options AS $v)
-					$this->template->assign_block_vars($block_name.'.options', [
-						'OPTION' => gettype($v) == 'string' ? $v : $v['post_subject'],
-						'VALUE' => gettype($v) == 'string' ? $v : $v['topic_id'],
-					]);
-
-				foreach ($attaches AS $v) {
-					$this->template->assign_block_vars($block_name.'.attaches', array_change_key_case ($v, CASE_UPPER));
-					if (count (explode ('.', $block_name)) == 1)
-						$this->topic_fields ($block_name.'.attaches.detail', $v, null, $v['forum_name']);
+					// Pass 1 : Flag title having values on related fields
+					if ($sql_data || $attachments[$k])
+						for ($stn = $title_num[0]; $stn; array_pop ($stn))
+							$block_value[implode('',$stn)] = true;
 				}
 			}
 		}
+
+		// Assign template blocks
+		if ($block)
+			foreach ($block AS $k=>$b) {
+				// Pass 2 : Flag titles of blocks having values on related fields
+				$b['BLOCK_HAVING_VALUE'] = $block_value[$b['FIELD_TITLE_NUM']];
+
+				// Create att="value" template fields
+				foreach ($b AS $kb=>$vb)
+					if ($vb)
+						$b['ATT_'.$kb] = strtolower($kb).'="'.str_replace('"','\\\"', $vb).'"';
+
+				$this->template->assign_block_vars($block_name, $b);
+
+				if ($attachments[$k])
+					foreach ($attachments[$k] AS $a) {
+						$this->template->assign_block_vars(
+							$block_name.'.attachments',
+							array_change_key_case ($a, CASE_UPPER)
+						);
+						if (count (explode ('.', $block_name)) == 1)
+							$this->topic_fields ($block_name.'.attachments.detail', $a, $a['forum_desc']);
+					}
+			}
+	}
+
+	function get_post_data($post_title, $add_first_line = '') {
+		$sql = 'SELECT post_text,bbcode_uid,bbcode_bitfield FROM '.POSTS_TABLE.
+			' WHERE LOWER(post_subject) LIKE "'.strtolower(str_replace ("'", "\'", $post_title)).'"'.
+			' ORDER BY post_id';
+		$result = $this->db->sql_query($sql);
+		$row = $this->db->sql_fetchrow($result);
+		$this->db->sql_freeresult($result);
+
+		return $row 
+			? explode ("\n", $add_first_line.generate_text_for_display(
+				$row['post_text'],
+				$row['bbcode_uid'],
+				$row['bbcode_bitfield'],
+				0)
+			)
+			: [];
 	}
 
 
@@ -1024,7 +946,7 @@ XML
 			mkdir ('../cache/geobb/');
 
 		// Images externes
-		$purl = parse_url ($attachment ['real_filename']);
+		$purl = parse_url ($attachment['real_filename']);
 		if (isset ($purl['host'])) { // le fichier est distant
 			$local = '../cache/geobb/'.str_replace ('/', '-', $purl['path']);
 			if (!file_exists ($local) || !filesize ($local)) {
@@ -1044,42 +966,42 @@ XML
 					$im = imagecreate  ($nbcligne * 7 + 10, 12 * count ($cs) + 8);
 					ImageColorAllocate ($im, 0, 0, 200);
 					foreach ($cs AS $k => $v)
-						ImageString ($im, 3, 5, 3 + 12 * $k, $v, ImageColorAllocate ($im, 255, 255, 255)); 
+						ImageString ($im, 3, 5, 3 + 12 * $k, $v, ImageColorAllocate ($im, 255, 255, 255));
 					imagejpeg ($im, $local);
-					ImageDestroy ($im); 
+					ImageDestroy ($im);
 				}
 			}
-			$attachment ['physical_filename'] = $local;
+			$attachment['physical_filename'] = $local;
 		}
 		else if (is_file('../'.$attachment['real_filename'])) // Fichier relatif à la racine du site
-			$attachment ['physical_filename'] = '../'.$attachment ['real_filename']; // script = download/file.php
+			$attachment['physical_filename'] = '../'.$attachment['real_filename']; // script = download/file.php
 
 		if ($exif = @exif_read_data ('../files/'.$attachment['physical_filename'])) {
-			$fls = explode ('/', $exif ['FocalLength']);
+			$fls = explode ('/', $exif['FocalLength']);
 			if (count ($fls) == 2)
 				$info[] = round($fls[0]/$fls[1]).'mm';
 
-			$aps = explode ('/', $exif ['FNumber']);
+			$aps = explode ('/', $exif['FNumber']);
 			if (count ($aps) == 2)
 				$info[] = 'f/'.round($aps[0]/$aps[1], 1).'';
 
-			$exs = explode ('/', $exif ['ExposureTime']);
+			$exs = explode ('/', $exif['ExposureTime']);
 			if (count ($exs) == 2)
 				$info[] = '1/'.round($exs[1]/$exs[0]).'s';
 
 			if ($exif['ISOSpeedRatings'])
 				$info[] = $exif['ISOSpeedRatings'].'ASA';
 
-			if ($exif ['Model']) {
-				if ($exif ['Make'] &&
-					strpos ($exif ['Model'], $exif ['Make']) === false)
-					$info[] = $exif ['Make'];
-				$info[] = $exif ['Model'];
+			if ($exif['Model']) {
+				if ($exif['Make'] &&
+					strpos ($exif['Model'], $exif['Make']) === false)
+					$info[] = $exif['Make'];
+				$info[] = $exif['Model'];
 			}
 
 			$this->db->sql_query (implode (' ', [
 				'UPDATE '.ATTACHMENTS_TABLE,
-				'SET exif = "'.implode (' ', $info ?: ['~']).'",',
+				'SET exif = "'.implode (' ', $info ?: ['-']).'",',
 					'filetime = '.(strtotime($exif['DateTimeOriginal']) ?: $exif['FileDateTime'] ?: $attachment['filetime']),
 				'WHERE attach_id = '.$attachment['attach_id']
 			]));
@@ -1088,7 +1010,7 @@ XML
 		// Reduction de la taille de l'image
 		if ($max_size = request_var('size', 0)) {
 			$img_size = @getimagesize ('../files/'.$attachment['physical_filename']);
-			$isx = $img_size [0]; $isy = $img_size [1]; 
+			$isx = $img_size[0]; $isy = $img_size[1];
 			$reduction = max ($isx / $max_size, $isy / $max_size);
 			if ($reduction > 1) { // Il faut reduire l'image
 				$pn = pathinfo ($attachment['physical_filename']);
@@ -1108,7 +1030,7 @@ XML
 						6 => -90,
 						8 =>  90,
 					];
-					$a = $angle [$exif ['Orientation']];
+					$a = $angle[$exif['Orientation']];
 					if ($a)
 						$image_src = imagerotate ($image_src, $a, 0);
 					if (abs ($a) == 90) {
@@ -1118,15 +1040,15 @@ XML
 					}
 
 					// Build destination image
-					$image_dest = imagecreatetruecolor ($isx / $reduction, $isy / $reduction); 
+					$image_dest = imagecreatetruecolor ($isx / $reduction, $isy / $reduction);
 					imagecopyresampled ($image_dest, $image_src, 0,0, 0,0, $isx / $reduction, $isy / $reduction, $isx, $isy);
 
 					// Convert image
 					$imgconv = 'image'.$mimetype[1]; // imagejpeg / imagepng / imagegif
-					$imgconv ($image_dest, $temporaire); 
+					$imgconv ($image_dest, $temporaire);
 
 					// Cleanup
-					imagedestroy ($image_dest); 
+					imagedestroy ($image_dest);
 					imagedestroy ($image_src);
 				}
 				$attachment['physical_filename'] = $temporaire;
@@ -1134,6 +1056,13 @@ XML
 		}
 
 		$vars['attachment'] = $attachment;
+	}
+
+	/**
+		MODIFY INSCRIPTION MAIL
+	*/
+	function ucp_register_welcome_email_before($vars) {
+		$vars['message'] = implode ("\n", $this->get_post_data('Mail inscription'));
 	}
 
 }
