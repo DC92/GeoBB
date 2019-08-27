@@ -1,4 +1,4 @@
-var _v=document.cookie,_r='COOKIES : ';if(typeof _v=='array'||typeof _v=='object'){for(_i in _v)if(typeof _v[_i]!='function')_r+=_i+'='+typeof _v[_i]+' '+_v[_i]+' '+(_v[_i]&&_v[_i].CLASS_NAME?'('+_v[_i].CLASS_NAME+')':'')+"\n"}else _r+=_v;console.log(_r);
+console.log(document.cookie);
 
 /**
  * www.refuges.info POI layer
@@ -120,8 +120,8 @@ var marqueur = marker('http://www.refuges.info/images/cadre.png', 'marqueur'),
 	],
 	basicControls = controlsCollection({
 		geoKeys: {
-			IGN: 'hcxdz5f1p9emo4i1lch6ennl', // Get your own (free) IGN key at http://professionnels.ign.fr/ign/contrats
-			thunderforest: 'a54d38a8b23f435fa08cfb1d0d0b266e', // Get your own (free) THUNDERFOREST key at https://manage.thunderforest.com
+			ign: 'hcxdz5f1p9emo4i1lch6ennl', // Get your own (free) IGN key at http://professionnels.ign.fr/ign/contrats
+			thunderforest: 'ee751f43b3af4614b01d1bce72785369', // Get your own (free) THUNDERFOREST key at https://manage.thunderforest.com
 			bing: 'ArLngay7TxiroomF7HLEXCS7kTWexf1_1s1qiF7nbTYs2IkD3XLcUnvSlKbGRZxt' // Get your own (free) BING key at https://www.microsoft.com/en-us/maps/create-a-bing-maps-key
 			// SwissTopo : You need to register your domain in https://shop.swisstopo.admin.ch/fr/products/geoservice/swisstopo_geoservices/WMTS_info
 		},
@@ -167,12 +167,3 @@ new ol.MyMap({
 	layers: overlays,
 	controls: basicControls.concat([edit])
 });
-
-
-/**
- * GENERAL TODO
- */
-//TODO-ARCHI map off line, application
-
-//TODO-END http://jsbeautifier.org/ & http://jshint.com
-//TODO-END replace var by const / let
